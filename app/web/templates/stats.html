@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% set cur = summary.currency %}
+{% macro money(value) %}{{ "%.2f"|format(value) }} {{ cur }}{% endmacro %}
+
+{% block title %}Statistics{% endblock %}
+
+{% block content %}
+<header class="app">
+  <h1>📊 Statistics</h1>
+  {% if user.display_name %}<span class="date">{{ user.display_name }}</span>{% endif %}
+</header>
+
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="value">{{ money(summary.total_spent) }}</div>
+    <div class="label">Total spent</div>
+  </div>
+  <div class="stat-card">
+    <div class="value">{{ summary.total_trips }}</div>
+    <div class="label">Shopping trips</div>
+  </div>
+</div>
+
+<div class="bars">
+  <h2>Monthly spending</h2>
+  {% if summary.monthly %}
+    {% for p in summary.monthly %}
+    <div class="bar-row">
+      <span class="period">{{ p.period }}</span>
+      <span class="track"><span style="width: {{ (100 * p.total / max_month) }}%"></span></span>
+      <span class="amount">{{ money(p.total) }}</span>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No completed trips yet.</p>
+  {% endif %}
+</div>
+
+{% if summary.yearly %}
+<div class="bars">
+  <h2>Yearly spending</h2>
+  {% for p in summary.yearly %}
+  <div class="bar-row">
+    <span class="period">{{ p.period }}</span>
+    <span class="track"><span style="width: {{ (100 * p.total / summary.yearly[0].total) if summary.yearly[0].total else 0 }}%"></span></span>
+    <span class="amount">{{ money(p.total) }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if summary.top_items %}
+<div class="bars">
+  <h2>Most bought items</h2>
+  <ul class="toplist">
+    {% for t in summary.top_items %}
+    <li><span>{{ t.name }}</span><span class="count">{{ t.count }}×</span></li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+{% endblock %}
