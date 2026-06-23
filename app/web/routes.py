@@ -66,9 +66,9 @@ def api_toggle_item(item_id: int, session: Session = Depends(get_session)):
     if item is None:
         raise HTTPException(status_code=404, detail="Item not found")
     toggle_item(session, item)
+    sl = item.shopping_list   # load relationship while session is active
+    totals = list_totals(sl)  # compute totals before commit
     session.commit()
-    sl = item.shopping_list
-    totals = list_totals(sl)
     return JSONResponse(
         {
             "id": item.id,
