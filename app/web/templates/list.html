@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% set check_svg %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5L20 6"/></svg>{% endset %}
+{% macro money(value) %}{{ "%.2f"|format(value) }} {{ currency }}{% endmacro %}
+
+{% block title %}{{ list.title }}{% endblock %}
+
+{% block content %}
+<header class="app">
+  <h1>🛒 {{ list.title }}</h1>
+  <span class="date">{{ list.created_at.strftime("%b %d, %Y") }}</span>
+</header>
+
+<div class="summary">
+  <div>
+    <div class="label">Predicted total</div>
+    <div class="value">{{ money(totals.predicted_total) }}</div>
+  </div>
+  <div style="text-align:right">
+    <div class="label">Bought</div>
+    <div class="value green">{{ totals.bought_count }} / {{ totals.total_count }}</div>
+  </div>
+</div>
+<div class="progress" style="margin:-8px 0 18px">
+  <span style="width: {{ (100 * totals.bought_count / totals.total_count) if totals.total_count else 0 }}%"></span>
+</div>
+
+{% for category, members in groups.items() %}
+<section class="category">
+  <h2>{{ category }}</h2>
+  <ul class="items">
+    {% for item in members %}
+    <li class="item" data-id="{{ item.id }}">
+      <span class="check">{{ check_svg|safe }}</span>
+      <span class="name">{{ item.raw_name }}{% if item.quantity != 1 %}<span class="qty">×{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }}</span>{% endif %}</span>
+      {% if item.predicted_price is not none %}
+        <span class="price">{{ money(item.predicted_price * item.quantity) }}</span>
+      {% else %}
+        <span class="price unknown">no history</span>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endfor %}
+
+{% if bought %}
+<section class="category bought-section">
+  <h2>✓ Bought</h2>
+  <ul class="items">
+    {% for item in bought %}
+    <li class="item bought" data-id="{{ item.id }}">
+      <span class="check">{{ check_svg|safe }}</span>
+      <span class="name">{{ item.raw_name }}{% if item.quantity != 1 %}<span class="qty">×{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }}</span>{% endif %}</span>
+      {% if item.predicted_price is not none %}
+        <span class="price">{{ money(item.predicted_price * item.quantity) }}</span>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% if not groups and not bought %}
+<p class="empty">This list is empty.</p>
+{% endif %}
+
+{% if list.status == "completed" %}
+<div class="complete-card">
+  <h2>✅ Completed</h2>
+  <p>Real total spent: <strong>{{ money(list.real_total or 0) }}</strong></p>
+</div>
+{% elif totals.total_count and totals.bought_count == totals.total_count %}
+<div class="complete-card">
+  <h2>All done! 🎉</h2>
+  <p>Enter what you actually paid so we can improve predictions and your statistics.</p>
+  <form method="post" action="/api/lists/{{ list.web_token }}/complete">
+    {% for item in bought %}
+    <label class="field">
+      <span>{{ item.raw_name }}</span>
+      <input type="number" step="0.01" min="0" name="price_{{ item.id }}"
+             placeholder="{{ '%.2f'|format(item.predicted_price * item.quantity) if item.predicted_price is not none else '' }}" />
+    </label>
+    {% endfor %}
+    <label class="field">
+      <span>Total paid ({{ currency }})</span>
+      <input type="number" step="0.01" min="0" name="real_total" required
+             value="{{ '%.2f'|format(totals.predicted_total) if totals.predicted_total else '' }}" />
+    </label>
+    <button type="submit" class="primary">Save & finish</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if list.status != "completed" %}<script src="/static/app.js"></script>{% endif %}
+{% endblock %}
