@@ -37,7 +37,14 @@ BOT_TEXT: dict[str, dict[str, str]] = {
         "btn_currency": "💱 מטבע",
         "btn_language": "🌐 שפה",
         "btn_report": "🐞 דיווח על תקלה",
+        "btn_users": "👥 משתמשים",
         "btn_help": "❓ עזרה",
+        "users_header": "👥 משתמשים רשומים:",
+        "users_none": "אין משתמשים רשומים.",
+        "confirm_delete_user": "למחוק את {name} ואת כל הנתונים שלו?",
+        "btn_yes": "✅ כן",
+        "btn_no": "✖ ביטול",
+        "user_deleted": "המשתמש {name} נמחק.",
         "report_usage": (
             "כדי לדווח על תקלה, שלחו הודעה שמתחילה ב-⁦/report⁩ ואחריה התיאור.\nלמשל:\n"
             "`/report הכפתור לא עובד`"
@@ -106,7 +113,14 @@ BOT_TEXT: dict[str, dict[str, str]] = {
         "btn_currency": "💱 Currency",
         "btn_language": "🌐 Language",
         "btn_report": "🐞 Report a bug",
+        "btn_users": "👥 Users",
         "btn_help": "❓ Help",
+        "users_header": "👥 Registered users:",
+        "users_none": "No registered users.",
+        "confirm_delete_user": "Delete {name} and all their data?",
+        "btn_yes": "✅ Yes",
+        "btn_no": "✖ Cancel",
+        "user_deleted": "{name} deleted.",
         "report_usage": (
             "To report a bug, send a message starting with ⁦/report⁩ followed by the "
             "description.\nE.g.:\n`/report the toggle button doesn't work`"
@@ -182,17 +196,16 @@ def month_short(lang: str, month: int) -> str:
     return _HE_MONTHS[month] if normalize_lang(lang) == "he" else month_abbr[month]
 
 
-def main_keyboard(lang: str) -> ReplyKeyboardMarkup:
+def main_keyboard(lang: str, is_admin: bool = False) -> ReplyKeyboardMarkup:
     tr = t(lang)
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text=tr["btn_lists"]), KeyboardButton(text=tr["btn_stats"])],
-            [KeyboardButton(text=tr["btn_currency"]), KeyboardButton(text=tr["btn_language"])],
-            [KeyboardButton(text=tr["btn_report"]), KeyboardButton(text=tr["btn_help"])],
-        ],
-        resize_keyboard=True,
-        is_persistent=True,
-    )
+    rows = [
+        [KeyboardButton(text=tr["btn_lists"]), KeyboardButton(text=tr["btn_stats"])],
+        [KeyboardButton(text=tr["btn_currency"]), KeyboardButton(text=tr["btn_language"])],
+        [KeyboardButton(text=tr["btn_report"]), KeyboardButton(text=tr["btn_help"])],
+    ]
+    if is_admin:
+        rows.append([KeyboardButton(text=tr["btn_users"])])
+    return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True, is_persistent=True)
 
 
 # Command-menu (☰) entries per language. Telegram shows these by the user's *client*

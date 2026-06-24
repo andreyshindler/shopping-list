@@ -92,7 +92,11 @@ async def cmd_id(message: Message) -> None:
 async def cmd_start(message: Message) -> None:
     with session_scope() as session:
         lang = _get_or_create(session, message.from_user).language
-    await message.answer(t(lang)["help"], parse_mode="Markdown", reply_markup=main_keyboard(lang))
+    await message.answer(
+        t(lang)["help"],
+        parse_mode="Markdown",
+        reply_markup=main_keyboard(lang, _is_admin(message.from_user.id)),
+    )
 
 
 @router.message(Command("help"))
@@ -129,7 +133,10 @@ async def cb_setlang(callback: CallbackQuery) -> None:
     await callback.answer()
     # Reply keyboards can't be swapped from a callback edit, so send a fresh one.
     await callback.bot.send_message(
-        callback.from_user.id, tr["help"], parse_mode="Markdown", reply_markup=main_keyboard(new_lang)
+        callback.from_user.id,
+        tr["help"],
+        parse_mode="Markdown",
+        reply_markup=main_keyboard(new_lang, _is_admin(callback.from_user.id)),
     )
 
 
@@ -389,6 +396,11 @@ async def btn_language(message: Message) -> None:
     await cmd_language(message)
 
 
+@router.message(F.text.in_(button_labels("btn_users")))
+async def btn_users(message: Message) -> None:
+    await cmd_users(message)
+
+
 @router.message(F.text.in_(button_labels("btn_report")))
 async def btn_report(message: Message) -> None:
     with session_scope() as session:
@@ -507,6 +519,106 @@ async def cb_pend_clear(callback: CallbackQuery) -> None:
         pass
 
 
+# --- Admin: user management ----------------------------------------------------
+
+
+def _users_view(session, lang: str) -> tuple[str, InlineKeyboardMarkup | None]:
+    """Build the registered-users list with a delete button per non-admin user."""
+    tr = t(lang)
+    users = session.scalars(select(User).order_by(User.created_at)).all()
+    if not users:
+        return tr["users_none"], None
+    lines = [tr["users_header"]]
+    buttons: list[list[InlineKeyboardButton]] = []
+    for u in users:
+        is_admin_user = _is_admin(u.telegram_id)
+        name = u.display_name or str(u.telegram_id)
+        marker = "👑" if is_admin_user else "👤"
+        lines.append(f"{marker} {name} · {_iso(str(u.telegram_id))}")
+        if not is_admin_user:
+            buttons.append(
+                [InlineKeyboardButton(text=f"🗑 {name}", callback_data=f"usr:del:{u.id}")]
+            )
+    kb = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
+    return "\n".join(lines), kb
+
+
+@router.message(Command("users"))
+async def cmd_users(message: Message) -> None:
+    """Admin: list all users with a delete option."""
+    if not _is_admin(message.from_user.id):
+        return
+    with session_scope() as session:
+        lang = _get_or_create(session, message.from_user).language
+        text, kb = _users_view(session, lang)
+    await message.answer(text, reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("usr:del:"))
+async def cb_usr_del(callback: CallbackQuery) -> None:
+    if not _is_admin(callback.from_user.id):
+        await callback.answer(t(None)["not_allowed"], show_alert=True)
+        return
+    uid = int(callback.data.split(":")[2])
+    with session_scope() as session:
+        tr = t(_get_or_create(session, callback.from_user).language)
+        target = session.get(User, uid)
+        name = (target.display_name if target else None) or str(uid)
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text=tr["btn_yes"], callback_data=f"usr:delyes:{uid}"),
+                InlineKeyboardButton(text=tr["btn_no"], callback_data="usr:list"),
+            ]
+        ]
+    )
+    try:
+        await callback.message.edit_text(
+            tr["confirm_delete_user"].format(name=name), reply_markup=keyboard
+        )
+    except Exception:
+        pass
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("usr:delyes:"))
+async def cb_usr_delyes(callback: CallbackQuery) -> None:
+    if not _is_admin(callback.from_user.id):
+        await callback.answer(t(None)["not_allowed"], show_alert=True)
+        return
+    uid = int(callback.data.split(":")[2])
+    with session_scope() as session:
+        lang = _get_or_create(session, callback.from_user).language
+        tr = t(lang)
+        target = session.get(User, uid)
+        deleted_name = None
+        if target is not None and not _is_admin(target.telegram_id):
+            deleted_name = target.display_name or str(target.telegram_id)
+            session.delete(target)  # cascades to lists, items, pending, price history
+            session.flush()
+        text, kb = _users_view(session, lang)
+    try:
+        await callback.message.edit_text(text, reply_markup=kb)
+    except Exception:
+        pass
+    await callback.answer(tr["user_deleted"].format(name=deleted_name) if deleted_name else "")
+
+
+@router.callback_query(F.data == "usr:list")
+async def cb_usr_list(callback: CallbackQuery) -> None:
+    if not _is_admin(callback.from_user.id):
+        await callback.answer(t(None)["not_allowed"], show_alert=True)
+        return
+    with session_scope() as session:
+        lang = _get_or_create(session, callback.from_user).language
+        text, kb = _users_view(session, lang)
+    try:
+        await callback.message.edit_text(text, reply_markup=kb)
+    except Exception:
+        pass
+    await callback.answer()
+
+
 # --- Approval / access control -------------------------------------------------
 
 
@@ -557,7 +669,9 @@ async def cb_approve(callback: CallbackQuery) -> None:
     await callback.answer(tr["approved_toast"])
     try:
         await callback.bot.send_message(
-            target_id, t(target_lang)["approved_user"], reply_markup=main_keyboard(target_lang)
+            target_id,
+            t(target_lang)["approved_user"],
+            reply_markup=main_keyboard(target_lang, _is_admin(target_id)),
         )
     except Exception:
         pass
