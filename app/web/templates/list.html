@@ -2,21 +2,22 @@
 {% set check_svg %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5L20 6"/></svg>{% endset %}
 {% macro money(value) %}{{ "%.2f"|format(value) }} {{ currency }}{% endmacro %}
 
-{% block title %}{{ list.title }}{% endblock %}
+{% set list_title = t.shopping_list if list.title == "Shopping list" else list.title %}
+{% block title %}{{ list_title }}{% endblock %}
 
 {% block content %}
 <header class="app">
-  <h1>🛒 {{ list.title }}</h1>
+  <h1>🛒 {{ list_title }}</h1>
   <span class="date">{{ list.created_at.strftime("%b %d, %Y") }}</span>
 </header>
 
 <div class="summary">
   <div>
-    <div class="label">Predicted total</div>
+    <div class="label">{{ t.predicted_total }}</div>
     <div class="value">{{ money(totals.predicted_total) }}</div>
   </div>
-  <div style="text-align:right">
-    <div class="label">Bought</div>
+  <div class="summary-end">
+    <div class="label">{{ t.bought }}</div>
     <div class="value green">{{ totals.bought_count }} / {{ totals.total_count }}</div>
   </div>
 </div>
@@ -26,7 +27,7 @@
 
 {% for category, members in groups.items() %}
 <section class="category">
-  <h2>{{ category }}</h2>
+  <h2>{{ cat_labels.get(category, category) }}</h2>
   <ul class="items">
     {% for item in members %}
     <li class="item" data-id="{{ item.id }}">
@@ -35,7 +36,7 @@
       {% if item.predicted_price is not none %}
         <span class="price">{{ money(item.predicted_price * item.quantity) }}</span>
       {% else %}
-        <span class="price unknown">no history</span>
+        <span class="price unknown">{{ t.no_history }}</span>
       {% endif %}
     </li>
     {% endfor %}
@@ -45,7 +46,7 @@
 
 {% if bought %}
 <section class="category bought-section">
-  <h2>✓ Bought</h2>
+  <h2>{{ t.bought_section }}</h2>
   <ul class="items">
     {% for item in bought %}
     <li class="item bought" data-id="{{ item.id }}">
@@ -61,18 +62,23 @@
 {% endif %}
 
 {% if not groups and not bought %}
-<p class="empty">This list is empty.</p>
+<p class="empty">{{ t.empty_list }}</p>
 {% endif %}
 
-{% if list.status == "completed" %}
+{% if list.status == "ended" %}
 <div class="complete-card">
-  <h2>✅ Completed</h2>
-  <p>Real total spent: <strong>{{ money(list.real_total or 0) }}</strong></p>
+  <h2>{{ t.list_ended }}</h2>
+  {% if groups %}<p>{{ t.missing_saved }}</p>{% endif %}
+</div>
+{% elif list.status == "completed" %}
+<div class="complete-card">
+  <h2>{{ t.completed }}</h2>
+  <p>{{ t.real_total_spent }}: <strong>{{ money(list.real_total or 0) }}</strong></p>
 </div>
 {% elif totals.total_count and totals.bought_count == totals.total_count %}
 <div class="complete-card">
-  <h2>All done! 🎉</h2>
-  <p>Enter what you actually paid so we can improve predictions and your statistics.</p>
+  <h2>{{ t.all_done }}</h2>
+  <p>{{ t.enter_paid }}</p>
   <form method="post" action="/api/lists/{{ list.web_token }}/complete">
     {% for item in bought %}
     <label class="field">
@@ -82,16 +88,28 @@
     </label>
     {% endfor %}
     <label class="field">
-      <span>Total paid ({{ currency }})</span>
+      <span>{{ t.total_paid }} ({{ currency }})</span>
       <input type="number" step="0.01" min="0" name="real_total" required
              value="{{ '%.2f'|format(totals.predicted_total) if totals.predicted_total else '' }}" />
     </label>
-    <button type="submit" class="primary">Save & finish</button>
+    <button type="submit" class="primary">{{ t.save_finish }}</button>
   </form>
 </div>
 {% endif %}
+
+{% if list.status == "active" and totals.total_count and totals.bought_count < totals.total_count %}
+<form method="post" action="/api/lists/{{ list.web_token }}/finish" class="finish-form"
+      data-confirm="{{ t.finish_confirm }}">
+  <button type="submit" class="secondary">{{ t.finish_shopping }}</button>
+</form>
+{% endif %}
+
+<form method="post" action="/api/lists/{{ list.web_token }}/delete" class="delete-form"
+      data-confirm="{{ t.delete_confirm }}">
+  <button type="submit" class="danger">{{ t.delete_list }}</button>
+</form>
 {% endblock %}
 
 {% block scripts %}
-{% if list.status != "completed" %}<script src="/static/app.js"></script>{% endif %}
+{% if list.status == "active" %}<script src="/static/app.js"></script>{% endif %}
 {% endblock %}

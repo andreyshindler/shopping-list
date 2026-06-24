@@ -2,119 +2,633 @@
 
 from __future__ import annotations
 
-from aiogram import F, Router
-from aiogram.filters import Command, CommandObject, CommandStart
-from aiogram.types import Message
+from collections.abc import Awaitable, Callable
+from datetime import datetime, timezone
+from typing import Any
 
+from aiogram import BaseMiddleware, F, Router
+from aiogram.filters import Command, CommandObject, CommandStart
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
+from sqlalchemy import extract, select
+
+from app.bot.i18n import (
+    button_labels,
+    main_keyboard,
+    month_label,
+    month_short,
+    normalize_lang,
+    t,
+)
 from app.config import get_settings
 from app.db import session_scope
-from app.models import ShoppingList
-from app.services import create_list_from_text, get_or_create_user
+from app.models import PendingItem, ShoppingList, User
+from app.services import (
+    add_item_from_pending,
+    create_list_from_text,
+    discard_carryover,
+    get_or_create_user,
+)
 
 router = Router()
 settings = get_settings()
 
-HELP_TEXT = (
-    "🛒 *Shopping List Bot*\n\n"
-    "Send me your shopping list — one item per line (or comma separated). "
-    "I'll sort it into categories and give you a web link.\n\n"
-    "Examples:\n"
-    "`2 milk`\n`bread`\n`tomatoes x3`\n\n"
-    "Commands:\n"
-    "/lists — your recent lists\n"
-    "/stats — spending statistics\n"
-    "/currency USD — set your currency"
-)
-
 
 def _display_name(message: Message) -> str | None:
-    user = message.from_user
-    if user is None:
-        return None
-    return user.full_name or user.username
+    return _user_name(message.from_user)
+
+
+def _user_name(tg_user) -> str | None:
+    return (tg_user.full_name or tg_user.username) if tg_user else None
+
+
+def _is_admin(telegram_id: int | None) -> bool:
+    return bool(settings.admin_telegram_id) and telegram_id == settings.admin_telegram_id
+
+
+def _get_or_create(session, tg_user) -> User:
+    return get_or_create_user(
+        session, tg_user.id, _user_name(tg_user), settings.default_currency
+    )
+
+
+def _admin_lang(session) -> str:
+    admin = session.scalar(
+        select(User).where(User.telegram_id == settings.admin_telegram_id)
+    )
+    return normalize_lang(admin.language if admin else None)
+
+
+def _approval_keyboard(telegram_id: int, lang: str) -> InlineKeyboardMarkup:
+    tr = t(lang)
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=tr["btn_approve"], callback_data=f"approve:{telegram_id}"
+                ),
+                InlineKeyboardButton(text=tr["btn_deny"], callback_data=f"deny:{telegram_id}"),
+            ]
+        ]
+    )
+
+
+# --- Basic commands ------------------------------------------------------------
+
+
+@router.message(Command("id"))
+async def cmd_id(message: Message) -> None:
+    """Reply with the caller's numeric Telegram ID (used to set ADMIN_TELEGRAM_ID)."""
+    with session_scope() as session:
+        lang = _get_or_create(session, message.from_user).language
+    await message.answer(t(lang)["id_text"].format(id=message.from_user.id), parse_mode="Markdown")
 
 
 @router.message(CommandStart())
 async def cmd_start(message: Message) -> None:
     with session_scope() as session:
-        get_or_create_user(
-            session, message.from_user.id, _display_name(message), settings.default_currency
-        )
-    await message.answer(HELP_TEXT, parse_mode="Markdown")
+        lang = _get_or_create(session, message.from_user).language
+    await message.answer(t(lang)["help"], parse_mode="Markdown", reply_markup=main_keyboard(lang))
+
+
+@router.message(Command("help"))
+async def cmd_help(message: Message) -> None:
+    await cmd_start(message)
+
+
+@router.message(Command("language"))
+async def cmd_language(message: Message) -> None:
+    with session_scope() as session:
+        lang = _get_or_create(session, message.from_user).language
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="עברית", callback_data="setlang:he"),
+                InlineKeyboardButton(text="English", callback_data="setlang:en"),
+            ]
+        ]
+    )
+    await message.answer(t(lang)["choose_language"], reply_markup=keyboard)
+
+
+@router.callback_query(F.data.startswith("setlang:"))
+async def cb_setlang(callback: CallbackQuery) -> None:
+    new_lang = normalize_lang(callback.data.split(":")[1])
+    with session_scope() as session:
+        user = _get_or_create(session, callback.from_user)
+        user.language = new_lang
+    tr = t(new_lang)
+    try:
+        await callback.message.edit_text(tr["language_set"])
+    except Exception:
+        pass
+    await callback.answer()
+    # Reply keyboards can't be swapped from a callback edit, so send a fresh one.
+    await callback.bot.send_message(
+        callback.from_user.id, tr["help"], parse_mode="Markdown", reply_markup=main_keyboard(new_lang)
+    )
 
 
 @router.message(Command("currency"))
 async def cmd_currency(message: Message, command: CommandObject) -> None:
     code = (command.args or "").strip().upper()
-    if not code or len(code) > 8:
-        await message.answer("Usage: /currency USD")
-        return
     with session_scope() as session:
-        user = get_or_create_user(
-            session, message.from_user.id, _display_name(message), settings.default_currency
-        )
-        user.currency = code
-    await message.answer(f"Currency set to {code}.")
-
-
-@router.message(Command("lists"))
-async def cmd_lists(message: Message) -> None:
-    with session_scope() as session:
-        user = get_or_create_user(
-            session, message.from_user.id, _display_name(message), settings.default_currency
-        )
-        lists = (
-            session.query(ShoppingList)
-            .filter(ShoppingList.user_id == user.id)
-            .order_by(ShoppingList.created_at.desc())
-            .limit(10)
-            .all()
-        )
-        if not lists:
-            await message.answer("No lists yet. Send me some items to start one!")
+        user = _get_or_create(session, message.from_user)
+        lang = user.language
+        if not code or len(code) > 8:
+            await message.answer(t(lang)["currency_usage"])
             return
-        lines = ["*Your recent lists:*"]
-        for sl in lists:
-            status = "✅" if sl.status == "completed" else "🟡"
-            lines.append(
-                f"{status} {sl.created_at:%Y-%m-%d} — "
-                f"[open]({settings.web_base_url}/list/{sl.web_token})"
-            )
-    await message.answer("\n".join(lines), parse_mode="Markdown", disable_web_page_preview=True)
+        user.currency = code
+    await message.answer(t(lang)["currency_set"].format(code=code))
+
+
+@router.message(Command("report"))
+async def cmd_report(message: Message, command: CommandObject) -> None:
+    """Relay a user's bug report to the admin."""
+    report = (command.args or "").strip()
+    with session_scope() as session:
+        lang = _get_or_create(session, message.from_user).language
+        admin_lang = _admin_lang(session) if settings.admin_telegram_id else "he"
+    tr = t(lang)
+    if not report:
+        await message.answer(tr["report_usage"], parse_mode="Markdown")
+        return
+    if not settings.admin_telegram_id:
+        await message.answer(tr["report_unavailable"])
+        return
+    username = f"@{message.from_user.username}" if message.from_user.username else "—"
+    name = _user_name(message.from_user) or str(message.from_user.id)
+    try:
+        await message.bot.send_message(
+            settings.admin_telegram_id,
+            t(admin_lang)["report_to_admin"].format(
+                text=report, name=name, username=username, id=message.from_user.id
+            ),
+        )
+    except Exception:
+        await message.answer(tr["report_unavailable"])
+        return
+    await message.answer(tr["report_sent"])
 
 
 @router.message(Command("stats"))
 async def cmd_stats(message: Message) -> None:
     with session_scope() as session:
-        user = get_or_create_user(
-            session, message.from_user.id, _display_name(message), settings.default_currency
-        )
-        token = user.stats_token
+        user = _get_or_create(session, message.from_user)
+        lang, token = user.language, user.stats_token
     await message.answer(
-        f"📊 Your statistics: {settings.web_base_url}/stats/{token}",
+        t(lang)["stats_link"].format(url=f"{settings.web_base_url}/stats/{token}"),
         disable_web_page_preview=True,
     )
+
+
+# --- Lists & history -----------------------------------------------------------
+
+
+def _list_price(sl: ShoppingList) -> float | None:
+    """Price to show for a list: the real total once completed, else the prediction."""
+    if sl.status == "completed" and sl.real_total is not None:
+        return sl.real_total
+    return sl.predicted_total or None
+
+
+def _iso(text: str) -> str:
+    """Wrap a left-to-right run in directional isolates (U+2066…U+2069) so digits and
+    currency render cleanly inside a right-to-left (Hebrew) message."""
+    return f"⁦{text}⁩"
+
+
+def _render_lists(
+    lists: list[ShoppingList], currency: str, title: str, tr: dict[str, str], rtl: bool
+) -> str:
+    if not lists:
+        return f"*{title}*\n\n{tr['no_lists_period']}"
+    lines = [f"*{title}*", ""]
+    total = 0.0
+    for sl in lists:
+        emoji = "✅" if sl.status == "completed" else "🟡"
+        price = _list_price(sl)
+        price_str = f"{price:.2f} {currency}" if price else "—"
+        # The total reflects money actually spent, so only completed lists count.
+        if sl.status == "completed" and sl.real_total is not None:
+            total += sl.real_total
+        meta = _iso(f"{sl.created_at:%Y-%m-%d} · {price_str}")
+        link = f"[{tr['open_link']}]({settings.web_base_url}/list/{sl.web_token})"
+        # RTL: lead with the link so the row reads naturally; the LTR meta is isolated.
+        lines.append(f"{emoji} {link} — {meta}" if rtl else f"{emoji} {meta} — {link}")
+    amount = f"*{_iso(f'{total:.2f} {currency}')}*"
+    lines += ["", tr["total_spent"].format(amount=amount)]
+    return "\n".join(lines)
+
+
+def _lists_in_range(session, user_id: int, start: datetime, end: datetime) -> list[ShoppingList]:
+    return (
+        session.query(ShoppingList)
+        .filter(
+            ShoppingList.user_id == user_id,
+            ShoppingList.created_at >= start,
+            ShoppingList.created_at < end,
+        )
+        .order_by(ShoppingList.created_at.desc())
+        .all()
+    )
+
+
+def _month_bounds(year: int, month: int) -> tuple[datetime, datetime]:
+    start = datetime(year, month, 1, tzinfo=timezone.utc)
+    end = (
+        datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+        if month == 12
+        else datetime(year, month + 1, 1, tzinfo=timezone.utc)
+    )
+    return start, end
+
+
+def _grid(buttons: list[InlineKeyboardButton], per_row: int = 3) -> list[list[InlineKeyboardButton]]:
+    return [buttons[i : i + per_row] for i in range(0, len(buttons), per_row)]
+
+
+@router.message(Command("lists"))
+async def cmd_lists(message: Message) -> None:
+    now = datetime.now(timezone.utc)
+    start, end = _month_bounds(now.year, now.month)
+    with session_scope() as session:
+        user = _get_or_create(session, message.from_user)
+        lang, currency = user.language, user.currency
+        lists = _lists_in_range(session, user.id, start, end)
+        tr = t(lang)
+        period = f"{month_label(lang, now.month)} {_iso(str(now.year))}"
+        text = _render_lists(
+            lists, currency, tr["lists_title"].format(period=period), tr, lang == "he"
+        )
+    history_button = InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text=tr["history_btn"], callback_data="hist:years")]]
+    )
+    await message.answer(
+        text, parse_mode="Markdown", disable_web_page_preview=True, reply_markup=history_button
+    )
+
+
+@router.callback_query(F.data == "hist:years")
+async def cb_hist_years(callback: CallbackQuery) -> None:
+    year_col = extract("year", ShoppingList.created_at)
+    with session_scope() as session:
+        user = _get_or_create(session, callback.from_user)
+        tr = t(user.language)
+        years = [
+            int(r[0])
+            for r in session.query(year_col)
+            .filter(ShoppingList.user_id == user.id)
+            .distinct()
+            .order_by(year_col.desc())
+            .all()
+        ]
+    if not years:
+        await callback.answer(tr["no_history"], show_alert=True)
+        return
+    buttons = [InlineKeyboardButton(text=str(y), callback_data=f"hist:y:{y}") for y in years]
+    try:
+        await callback.message.edit_text(
+            tr["select_year"],
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=_grid(buttons)),
+        )
+    except Exception:
+        pass
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("hist:y:"))
+async def cb_hist_year(callback: CallbackQuery) -> None:
+    year = int(callback.data.split(":")[2])
+    month_col = extract("month", ShoppingList.created_at)
+    year_col = extract("year", ShoppingList.created_at)
+    with session_scope() as session:
+        user = _get_or_create(session, callback.from_user)
+        lang = user.language
+        tr = t(lang)
+        months = [
+            int(r[0])
+            for r in session.query(month_col)
+            .filter(ShoppingList.user_id == user.id, year_col == year)
+            .distinct()
+            .order_by(month_col)
+            .all()
+        ]
+    buttons = [
+        InlineKeyboardButton(text=month_short(lang, m), callback_data=f"hist:m:{year}:{m}")
+        for m in months
+    ]
+    rows = _grid(buttons)
+    rows.append([InlineKeyboardButton(text=tr["back_years"], callback_data="hist:years")])
+    try:
+        await callback.message.edit_text(
+            tr["select_month"].format(year=year),
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+        )
+    except Exception:
+        pass
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("hist:m:"))
+async def cb_hist_month(callback: CallbackQuery) -> None:
+    _, _, year_s, month_s = callback.data.split(":")
+    year, month = int(year_s), int(month_s)
+    start, end = _month_bounds(year, month)
+    with session_scope() as session:
+        user = _get_or_create(session, callback.from_user)
+        lang, currency = user.language, user.currency
+        tr = t(lang)
+        lists = _lists_in_range(session, user.id, start, end)
+        period = f"{month_label(lang, month)} {_iso(str(year))}"
+        text = _render_lists(
+            lists, currency, tr["lists_title"].format(period=period), tr, lang == "he"
+        )
+    rows = [
+        [InlineKeyboardButton(text=tr["back_months"], callback_data=f"hist:y:{year}")],
+        [InlineKeyboardButton(text=tr["back_years"], callback_data="hist:years")],
+    ]
+    try:
+        await callback.message.edit_text(
+            text,
+            parse_mode="Markdown",
+            disable_web_page_preview=True,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+        )
+    except Exception:
+        pass
+    await callback.answer()
+
+
+# --- Reply-keyboard buttons (registered before the free-text list parser) ------
+
+
+@router.message(F.text.in_(button_labels("btn_lists")))
+async def btn_lists(message: Message) -> None:
+    await cmd_lists(message)
+
+
+@router.message(F.text.in_(button_labels("btn_stats")))
+async def btn_stats(message: Message) -> None:
+    await cmd_stats(message)
+
+
+@router.message(F.text.in_(button_labels("btn_help")))
+async def btn_help(message: Message) -> None:
+    await cmd_start(message)
+
+
+@router.message(F.text.in_(button_labels("btn_language")))
+async def btn_language(message: Message) -> None:
+    await cmd_language(message)
+
+
+@router.message(F.text.in_(button_labels("btn_report")))
+async def btn_report(message: Message) -> None:
+    with session_scope() as session:
+        lang = _get_or_create(session, message.from_user).language
+    await message.answer(t(lang)["report_usage"], parse_mode="Markdown")
+
+
+@router.message(F.text.in_(button_labels("btn_currency")))
+async def btn_currency(message: Message) -> None:
+    with session_scope() as session:
+        user = _get_or_create(session, message.from_user)
+        lang, current = user.language, user.currency
+    await message.answer(t(lang)["currency_current"].format(cur=current), parse_mode="Markdown")
 
 
 @router.message(F.text & ~F.text.startswith("/"))
 async def handle_list_text(message: Message) -> None:
     with session_scope() as session:
-        user = get_or_create_user(
-            session, message.from_user.id, _display_name(message), settings.default_currency
-        )
+        user = _get_or_create(session, message.from_user)
+        lang, currency = user.language, user.currency
+        tr = t(lang)
         shopping_list = create_list_from_text(session, user, message.text)
         if shopping_list is None:
-            await message.answer("I couldn't find any items in that message.")
+            await message.answer(tr["no_items_found"])
             return
         count = len(shopping_list.items)
+        with_price = sum(1 for i in shopping_list.items if i.predicted_price is not None)
+        without_price = count - with_price
         predicted = shopping_list.predicted_total
         token = shopping_list.web_token
-        currency = user.currency
+        list_id = shopping_list.id
+        pending = _pending_rows(session, user.id)
 
-    text = [f"✅ Added {count} item(s) and sorted them by category."]
+    text = [tr["added"].format(count=count)]
     if predicted > 0:
-        text.append(f"Predicted total: *{predicted:.2f} {currency}*")
-    text.append(f"\nOpen your list:\n{settings.web_base_url}/list/{token}")
-    await message.answer(
-        "\n".join(text), parse_mode="Markdown", disable_web_page_preview=True
+        amount = f"*{_iso(f'{predicted:.2f} {currency}')}*"
+        text.append(tr["predicted_total"].format(amount=amount))
+    text.append(
+        tr["price_breakdown"].format(with_price=_iso(with_price), without_price=_iso(without_price))
     )
+    text.append(f"\n{tr['open_your_list']}\n{settings.web_base_url}/list/{token}")
+    await message.answer("\n".join(text), parse_mode="Markdown", disable_web_page_preview=True)
+
+    # Offer carried-over items (saved when an earlier list was ended early).
+    if pending:
+        await message.answer(
+            tr["pending_intro"], reply_markup=_pending_keyboard(pending, list_id, tr)
+        )
+
+
+# --- Carried-over (pending) items ----------------------------------------------
+
+
+def _pending_rows(session, user_id: int) -> list[tuple[int, str]]:
+    return [
+        (p.id, p.raw_name)
+        for p in session.scalars(
+            select(PendingItem)
+            .where(PendingItem.user_id == user_id)
+            .order_by(PendingItem.created_at)
+        ).all()
+    ]
+
+
+def _pending_keyboard(
+    rows: list[tuple[int, str]], list_id: int, tr: dict[str, str]
+) -> InlineKeyboardMarkup:
+    buttons = [
+        [InlineKeyboardButton(text=f"➕ {name}", callback_data=f"pend:add:{pid}:{list_id}")]
+        for pid, name in rows
+    ]
+    buttons.append(
+        [InlineKeyboardButton(text=tr["btn_clear_pending"], callback_data=f"pend:clear:{list_id}")]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+@router.callback_query(F.data.startswith("pend:add:"))
+async def cb_pend_add(callback: CallbackQuery) -> None:
+    _, _, pid_s, list_id_s = callback.data.split(":")
+    pid, list_id = int(pid_s), int(list_id_s)
+    with session_scope() as session:
+        user = _get_or_create(session, callback.from_user)
+        tr = t(user.language)
+        pending = session.get(PendingItem, pid)
+        sl = session.get(ShoppingList, list_id)
+        if pending and sl and pending.user_id == user.id and sl.user_id == user.id:
+            add_item_from_pending(session, sl, pending)
+            session.delete(pending)
+        rows = _pending_rows(session, user.id)
+    await callback.answer(tr["pending_added"])
+    try:
+        if rows:
+            await callback.message.edit_reply_markup(
+                reply_markup=_pending_keyboard(rows, list_id, tr)
+            )
+        else:
+            await callback.message.edit_text(tr["pending_done"])
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data.startswith("pend:clear"))
+async def cb_pend_clear(callback: CallbackQuery) -> None:
+    parts = callback.data.split(":")
+    list_id = int(parts[2]) if len(parts) > 2 else None
+    with session_scope() as session:
+        user = _get_or_create(session, callback.from_user)
+        tr = t(user.language)
+        # Clears pending and removes any carry-over items already added to this list.
+        discard_carryover(session, user.id, list_id)
+    await callback.answer()
+    try:
+        await callback.message.edit_text(tr["pending_cleared"])
+    except Exception:
+        pass
+
+
+# --- Approval / access control -------------------------------------------------
+
+
+@router.message(Command("pending"))
+async def cmd_pending(message: Message) -> None:
+    """Admin: re-list users awaiting approval (in case a notification was missed)."""
+    if not _is_admin(message.from_user.id):
+        return
+    with session_scope() as session:
+        lang = _get_or_create(session, message.from_user).language
+        tr = t(lang)
+        rows = [
+            (u.telegram_id, u.display_name or str(u.telegram_id))
+            for u in session.scalars(
+                select(User).where(User.is_approved.is_(False)).order_by(User.created_at)
+            ).all()
+        ]
+    if not rows:
+        await message.answer(tr["no_pending"])
+        return
+    for telegram_id, name in rows:
+        await message.answer(
+            tr["pending_entry"].format(name=name, id=telegram_id),
+            reply_markup=_approval_keyboard(telegram_id, lang),
+        )
+
+
+@router.callback_query(F.data.startswith("approve:"))
+async def cb_approve(callback: CallbackQuery) -> None:
+    if not _is_admin(callback.from_user.id):
+        await callback.answer(t(None)["not_allowed"], show_alert=True)
+        return
+    target_id = int(callback.data.split(":", 1)[1])
+    with session_scope() as session:
+        admin_lang = _get_or_create(session, callback.from_user).language
+        tr = t(admin_lang)
+        user = session.scalar(select(User).where(User.telegram_id == target_id))
+        if user is None:
+            await callback.answer(tr["user_not_found"], show_alert=True)
+            return
+        user.is_approved = True
+        name = user.display_name or str(target_id)
+        target_lang = user.language
+    try:
+        await callback.message.edit_text(tr["approved_admin"].format(name=name, id=target_id))
+    except Exception:
+        pass
+    await callback.answer(tr["approved_toast"])
+    try:
+        await callback.bot.send_message(
+            target_id, t(target_lang)["approved_user"], reply_markup=main_keyboard(target_lang)
+        )
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data.startswith("deny:"))
+async def cb_deny(callback: CallbackQuery) -> None:
+    if not _is_admin(callback.from_user.id):
+        await callback.answer(t(None)["not_allowed"], show_alert=True)
+        return
+    target_id = int(callback.data.split(":", 1)[1])
+    with session_scope() as session:
+        admin_lang = _get_or_create(session, callback.from_user).language
+        tr = t(admin_lang)
+        user = session.scalar(select(User).where(User.telegram_id == target_id))
+        name = (user.display_name if user else None) or str(target_id)
+    try:
+        await callback.message.edit_text(tr["denied_admin"].format(name=name, id=target_id))
+    except Exception:
+        pass
+    await callback.answer(tr["denied_toast"])
+
+
+class ApprovalMiddleware(BaseMiddleware):
+    """Block messages from users who haven't been approved by the admin.
+
+    Disabled while ``admin_telegram_id`` is unset (0): everyone passes through.
+    The admin is always allowed and is notified once when a new user appears.
+    """
+
+    async def __call__(
+        self,
+        handler: Callable[[Message, dict[str, Any]], Awaitable[Any]],
+        event: Message,
+        data: dict[str, Any],
+    ) -> Any:
+        tg_user = event.from_user
+        if not settings.admin_telegram_id or tg_user is None:
+            return await handler(event, data)
+
+        with session_scope() as session:
+            user = session.scalar(select(User).where(User.telegram_id == tg_user.id))
+            is_new = user is None
+            if is_new:
+                user = User(
+                    telegram_id=tg_user.id,
+                    display_name=tg_user.full_name or tg_user.username,
+                    currency=settings.default_currency,
+                    is_approved=_is_admin(tg_user.id),
+                )
+                session.add(user)
+                session.flush()
+            approved = user.is_approved
+            lang = user.language
+            admin_lang = _admin_lang(session)
+
+        if approved:
+            return await handler(event, data)
+
+        if is_new:
+            username = f"@{tg_user.username}" if tg_user.username else "—"
+            name = tg_user.full_name or tg_user.username or str(tg_user.id)
+            try:
+                await data["bot"].send_message(
+                    settings.admin_telegram_id,
+                    t(admin_lang)["new_user_admin"].format(
+                        name=name, username=username, id=tg_user.id
+                    ),
+                    reply_markup=_approval_keyboard(tg_user.id, admin_lang),
+                )
+            except Exception:
+                pass
+        await event.answer(t(lang)["pending"])
+        return None

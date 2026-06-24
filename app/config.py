@@ -12,6 +12,9 @@ class Settings(BaseSettings):
 
     # Telegram
     bot_token: str = ""
+    # Owner's numeric Telegram ID. Receives new-user notifications and is
+    # auto-approved. While 0 (unset), the approval gate is disabled.
+    admin_telegram_id: int = 0
 
     # Database
     database_url: str = "postgresql+psycopg://shopping:shopping@db:5432/shopping"
@@ -22,7 +25,7 @@ class Settings(BaseSettings):
     web_port: int = 8000
 
     # Defaults
-    default_currency: str = "USD"
+    default_currency: str = "ILS"
 
 
 @lru_cache

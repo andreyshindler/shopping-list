@@ -32,7 +32,9 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    currency: Mapped[str] = mapped_column(String(8), default="USD")
+    currency: Mapped[str] = mapped_column(String(8), default="ILS")
+    language: Mapped[str] = mapped_column(String(2), default="he", server_default="he")
+    is_approved: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     stats_token: Mapped[str] = mapped_column(String(32), unique=True, index=True, default=_uuid)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -76,8 +78,27 @@ class Item(Base):
     is_bought: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     bought_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    # True when this item was added from a previous list's carried-over items.
+    from_pending: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     shopping_list: Mapped[ShoppingList] = relationship(back_populates="items")
+
+
+class PendingItem(Base):
+    """An item carried over from a list the user ended before buying it.
+
+    Suggested for inclusion the next time the user starts a list.
+    """
+
+    __tablename__ = "pending_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    raw_name: Mapped[str] = mapped_column(String(255))
+    normalized_name: Mapped[str] = mapped_column(String(255), index=True)
+    category: Mapped[str] = mapped_column(String(64), default="Other")
+    quantity: Mapped[float] = mapped_column(Float, default=1.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class PriceHistory(Base):
@@ -89,5 +110,5 @@ class PriceHistory(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     normalized_name: Mapped[str] = mapped_column(String(255), index=True)
     price: Mapped[float] = mapped_column(Float)
-    currency: Mapped[str] = mapped_column(String(8), default="USD")
+    currency: Mapped[str] = mapped_column(String(8), default="ILS")
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

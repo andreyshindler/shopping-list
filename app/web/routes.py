@@ -12,8 +12,9 @@ from sqlalchemy.orm import Session
 from app.categories import CATEGORY_ORDER
 from app.db import get_session
 from app.models import Item, ShoppingList, User
-from app.services import complete_list, list_totals, toggle_item
+from app.services import complete_list, end_list, list_totals, toggle_item
 from app.stats import get_stats
+from app.web.i18n import SUPPORTED_LANGS, i18n_context
 
 router = APIRouter()
 
@@ -43,6 +44,18 @@ def _grouped_items(shopping_list: ShoppingList) -> "OrderedDict[str, list[Item]]
     return groups
 
 
+@router.get("/set-language")
+def set_language(lang: str = "he", next: str = "/"):
+    """Persist the chosen UI language in a cookie and return to the page."""
+    if lang not in SUPPORTED_LANGS:
+        lang = "he"
+    # Only allow local redirects (avoid open-redirect via the `next` param).
+    target = next if next.startswith("/") else "/"
+    response = RedirectResponse(url=target, status_code=303)
+    response.set_cookie("lang", lang, max_age=60 * 60 * 24 * 365, samesite="lax")
+    return response
+
+
 @router.get("/list/{token}", response_class=HTMLResponse)
 def view_list(token: str, request: Request, session: Session = Depends(get_session)):
     sl = _get_list(session, token)
@@ -56,6 +69,7 @@ def view_list(token: str, request: Request, session: Session = Depends(get_sessi
             "groups": _grouped_items(sl),
             "bought": bought,
             "totals": list_totals(sl),
+            **i18n_context(request),
         },
     )
 
@@ -101,6 +115,29 @@ async def api_complete_list(
     return RedirectResponse(url=f"/list/{token}", status_code=303)
 
 
+@router.post("/api/lists/{token}/finish")
+def api_finish_list(token: str, session: Session = Depends(get_session)):
+    """End a list at any stage; unbought items are saved as pending for next time."""
+    sl = _get_list(session, token)
+    end_list(session, sl)
+    session.commit()
+    return RedirectResponse(url=f"/list/{token}", status_code=303)
+
+
+@router.post("/api/lists/{token}/delete")
+def api_delete_list(token: str, session: Session = Depends(get_session)):
+    """Permanently delete a list (and its items, via cascade)."""
+    sl = _get_list(session, token)
+    session.delete(sl)
+    session.commit()
+    return RedirectResponse(url="/deleted", status_code=303)
+
+
+@router.get("/deleted", response_class=HTMLResponse)
+def view_deleted(request: Request):
+    return _templates().TemplateResponse(request, "deleted.html", {**i18n_context(request)})
+
+
 @router.get("/stats/{stats_token}", response_class=HTMLResponse)
 def view_stats(stats_token: str, request: Request, session: Session = Depends(get_session)):
     user = session.scalar(select(User).where(User.stats_token == stats_token))
@@ -111,5 +148,10 @@ def view_stats(stats_token: str, request: Request, session: Session = Depends(ge
     return _templates().TemplateResponse(
         request,
         "stats.html",
-        {"user": user, "summary": summary, "max_month": max_month or 1.0},
+        {
+            "user": user,
+            "summary": summary,
+            "max_month": max_month or 1.0,
+            **i18n_context(request),
+        },
     )

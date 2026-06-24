@@ -2,27 +2,27 @@
 {% set cur = summary.currency %}
 {% macro money(value) %}{{ "%.2f"|format(value) }} {{ cur }}{% endmacro %}
 
-{% block title %}Statistics{% endblock %}
+{% block title %}{{ t.statistics }}{% endblock %}
 
 {% block content %}
 <header class="app">
-  <h1>📊 Statistics</h1>
+  <h1>📊 {{ t.statistics }}</h1>
   {% if user.display_name %}<span class="date">{{ user.display_name }}</span>{% endif %}
 </header>
 
 <div class="stat-grid">
   <div class="stat-card">
     <div class="value">{{ money(summary.total_spent) }}</div>
-    <div class="label">Total spent</div>
+    <div class="label">{{ t.total_spent }}</div>
   </div>
   <div class="stat-card">
     <div class="value">{{ summary.total_trips }}</div>
-    <div class="label">Shopping trips</div>
+    <div class="label">{{ t.shopping_trips }}</div>
   </div>
 </div>
 
 <div class="bars">
-  <h2>Monthly spending</h2>
+  <h2>{{ t.monthly_spending }}</h2>
   {% if summary.monthly %}
     {% for p in summary.monthly %}
     <div class="bar-row">
@@ -32,13 +32,13 @@
     </div>
     {% endfor %}
   {% else %}
-    <p class="empty">No completed trips yet.</p>
+    <p class="empty">{{ t.no_trips }}</p>
   {% endif %}
 </div>
 
 {% if summary.yearly %}
 <div class="bars">
-  <h2>Yearly spending</h2>
+  <h2>{{ t.yearly_spending }}</h2>
   {% for p in summary.yearly %}
   <div class="bar-row">
     <span class="period">{{ p.period }}</span>
@@ -51,7 +51,7 @@
 
 {% if summary.top_items %}
 <div class="bars">
-  <h2>Most bought items</h2>
+  <h2>{{ t.most_bought }}</h2>
   <ul class="toplist">
     {% for t in summary.top_items %}
     <li><span>{{ t.name }}</span><span class="count">{{ t.count }}×</span></li>
