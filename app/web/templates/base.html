@@ -8,12 +8,14 @@
 </head>
 <body>
   <div class="wrap">
+    {% if lang_token %}
     <div class="langbar">
       <a class="{{ 'on' if lang == 'en' }}"
-         href="/api/set-language?lang=en&next={{ request.url.path|urlencode }}">EN</a>
+         href="/api/set-language?lang=en&kind={{ lang_kind }}&token={{ lang_token }}&next={{ request.url.path|urlencode }}">EN</a>
       <a class="{{ 'on' if lang == 'he' }}"
-         href="/api/set-language?lang=he&next={{ request.url.path|urlencode }}">עב</a>
+         href="/api/set-language?lang=he&kind={{ lang_kind }}&token={{ lang_token }}&next={{ request.url.path|urlencode }}">עב</a>
     </div>
+    {% endif %}
     {% block content %}{% endblock %}
   </div>
   <script>

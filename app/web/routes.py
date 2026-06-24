@@ -14,7 +14,7 @@ from app.db import get_session
 from app.models import Item, ShoppingList, User
 from app.services import complete_list, end_list, list_totals, toggle_item
 from app.stats import get_stats
-from app.web.i18n import SUPPORTED_LANGS, i18n_context
+from app.web.i18n import i18n_context, normalize_lang
 
 router = APIRouter()
 
@@ -45,15 +45,26 @@ def _grouped_items(shopping_list: ShoppingList) -> "OrderedDict[str, list[Item]]
 
 
 @router.get("/api/set-language")
-def set_language(lang: str = "he", next: str = "/"):
-    """Persist the chosen UI language in a cookie and return to the page."""
-    if lang not in SUPPORTED_LANGS:
-        lang = "he"
+def set_language(
+    lang: str = "he",
+    kind: str = "list",
+    token: str = "",
+    next: str = "/",
+    session: Session = Depends(get_session),
+):
+    """Persist the chosen UI language on the owning user (shared with the bot)."""
+    lang = normalize_lang(lang)
+    if kind == "stats":
+        user = session.scalar(select(User).where(User.stats_token == token))
+    else:
+        sl = session.scalar(select(ShoppingList).where(ShoppingList.web_token == token))
+        user = sl.user if sl else None
+    if user is not None:
+        user.language = lang
+        session.commit()
     # Only allow local redirects (avoid open-redirect via the `next` param).
     target = next if next.startswith("/") else "/"
-    response = RedirectResponse(url=target, status_code=303)
-    response.set_cookie("lang", lang, max_age=60 * 60 * 24 * 365, samesite="lax")
-    return response
+    return RedirectResponse(url=target, status_code=303)
 
 
 @router.get("/list/{token}", response_class=HTMLResponse)
@@ -69,7 +80,7 @@ def view_list(token: str, request: Request, session: Session = Depends(get_sessi
             "groups": _grouped_items(sl),
             "bought": bought,
             "totals": list_totals(sl),
-            **i18n_context(request),
+            **i18n_context(sl.user.language, sl.web_token, "list"),
         },
     )
 
@@ -128,14 +139,15 @@ def api_finish_list(token: str, session: Session = Depends(get_session)):
 def api_delete_list(token: str, session: Session = Depends(get_session)):
     """Permanently delete a list (and its items, via cascade)."""
     sl = _get_list(session, token)
+    lang = sl.user.language
     session.delete(sl)
     session.commit()
-    return RedirectResponse(url="/api/deleted", status_code=303)
+    return RedirectResponse(url=f"/api/deleted?lang={lang}", status_code=303)
 
 
 @router.get("/api/deleted", response_class=HTMLResponse)
-def view_deleted(request: Request):
-    return _templates().TemplateResponse(request, "deleted.html", {**i18n_context(request)})
+def view_deleted(request: Request, lang: str = "he"):
+    return _templates().TemplateResponse(request, "deleted.html", {**i18n_context(lang)})
 
 
 @router.get("/stats/{stats_token}", response_class=HTMLResponse)
@@ -152,6 +164,6 @@ def view_stats(stats_token: str, request: Request, session: Session = Depends(ge
             "user": user,
             "summary": summary,
             "max_month": max_month or 1.0,
-            **i18n_context(request),
+            **i18n_context(user.language, user.stats_token, "stats"),
         },
     )

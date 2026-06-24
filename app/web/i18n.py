@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from fastapi import Request
-
 from app.categories import CATEGORY_ORDER
 
 DEFAULT_LANG = "he"
@@ -91,18 +89,26 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
 }
 
 
-def resolve_lang(request: Request) -> str:
-    """Pick the UI language from the ``lang`` cookie, defaulting to Hebrew."""
-    lang = request.cookies.get("lang")
+def normalize_lang(lang: str | None) -> str:
+    """Return a supported language code, defaulting to Hebrew."""
     return lang if lang in SUPPORTED_LANGS else DEFAULT_LANG
 
 
-def i18n_context(request: Request) -> dict[str, object]:
-    """Common template variables for localisation: ``lang``, ``dir``, ``t``."""
-    lang = resolve_lang(request)
+def i18n_context(
+    lang: str | None, lang_token: str | None = None, lang_kind: str = "list"
+) -> dict[str, object]:
+    """Localisation template variables for a given (per-user) language.
+
+    ``lang_token``/``lang_kind`` identify the owner so the EN/עב toggle can persist
+    the choice back to ``User.language`` (shared with the bot). When ``lang_token``
+    is None the toggle is hidden.
+    """
+    lang = normalize_lang(lang)
     return {
         "lang": lang,
         "dir": "rtl" if lang == "he" else "ltr",
         "t": TRANSLATIONS[lang],
         "cat_labels": CATEGORY_LABELS[lang],
+        "lang_token": lang_token,
+        "lang_kind": lang_kind,
     }
