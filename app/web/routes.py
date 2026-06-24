@@ -44,7 +44,7 @@ def _grouped_items(shopping_list: ShoppingList) -> "OrderedDict[str, list[Item]]
     return groups
 
 
-@router.get("/set-language")
+@router.get("/api/set-language")
 def set_language(lang: str = "he", next: str = "/"):
     """Persist the chosen UI language in a cookie and return to the page."""
     if lang not in SUPPORTED_LANGS:
@@ -130,10 +130,10 @@ def api_delete_list(token: str, session: Session = Depends(get_session)):
     sl = _get_list(session, token)
     session.delete(sl)
     session.commit()
-    return RedirectResponse(url="/deleted", status_code=303)
+    return RedirectResponse(url="/api/deleted", status_code=303)
 
 
-@router.get("/deleted", response_class=HTMLResponse)
+@router.get("/api/deleted", response_class=HTMLResponse)
 def view_deleted(request: Request):
     return _templates().TemplateResponse(request, "deleted.html", {**i18n_context(request)})
 
