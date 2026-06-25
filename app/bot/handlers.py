@@ -30,6 +30,7 @@ from app.models import PendingItem, ShoppingList, User
 from app.services import (
     add_item_from_pending,
     create_list_from_text,
+    delete_lists_in_range,
     discard_carryover,
     get_or_create_user,
 )
@@ -216,17 +217,18 @@ def _render_lists(
         return f"*{title}*\n\n{tr['no_lists_period']}"
     lines = [f"*{title}*", ""]
     total = 0.0
-    for sl in lists:
+    for idx, sl in enumerate(lists, 1):
         emoji = "✅" if sl.status == "completed" else "🟡"
         price = _list_price(sl)
         price_str = f"{price:.2f} {currency}" if price else "—"
         # The total reflects money actually spent, so only completed lists count.
         if sl.status == "completed" and sl.real_total is not None:
             total += sl.real_total
+        num = _iso(f"{idx}.")
         meta = _iso(f"{sl.created_at:%Y-%m-%d} · {price_str}")
         link = f"[{tr['open_link']}]({settings.web_base_url}/list/{sl.web_token})"
         # RTL: lead with the link so the row reads naturally; the LTR meta is isolated.
-        lines.append(f"{emoji} {link} — {meta}" if rtl else f"{emoji} {meta} — {link}")
+        lines.append(f"{num} {emoji} {link} — {meta}" if rtl else f"{num} {emoji} {meta} — {link}")
     amount = f"*{_iso(f'{total:.2f} {currency}')}*"
     lines += ["", tr["total_spent"].format(amount=amount)]
     return "\n".join(lines)
@@ -259,118 +261,332 @@ def _grid(buttons: list[InlineKeyboardButton], per_row: int = 3) -> list[list[In
     return [buttons[i : i + per_row] for i in range(0, len(buttons), per_row)]
 
 
+def _del_label(sl: ShoppingList, currency: str) -> str:
+    price = _list_price(sl)
+    suffix = f" · {price:.0f} {currency}" if price else ""
+    return f"🗑 {sl.created_at:%d/%m}{suffix}"
+
+
+def _lists_view(
+    session, user: User, ctx: str, manage: bool = False
+) -> tuple[str, InlineKeyboardMarkup]:
+    """Render a month's lists. ``manage`` toggles delete mode.
+
+    Default view stays clean (summary + nav + a single "🗑 Delete" button). Delete
+    mode shows one delete button per list plus "✓ Done". ``ctx`` is "c" for the
+    current month or "YYYY.M" for a history month; it is echoed into callbacks so the
+    view re-renders correctly.
+    """
+    lang, currency, tr = user.language, user.currency, t(user.language)
+    if ctx == "c":
+        now = datetime.now(timezone.utc)
+        year, month, current = now.year, now.month, True
+    else:
+        y, m = ctx.split(".")
+        year, month, current = int(y), int(m), False
+    start, end = _month_bounds(year, month)
+    lists = _lists_in_range(session, user.id, start, end)
+    period = f"{month_label(lang, month)} {_iso(str(year))}"
+    text = _render_lists(lists, currency, tr["lists_title"].format(period=period), tr, lang == "he")
+
+    rows: list[list[InlineKeyboardButton]] = []
+    if manage:
+        rows += [
+            [InlineKeyboardButton(text=_del_label(sl, currency), callback_data=f"ld:{sl.id}:{ctx}")]
+            for sl in lists
+        ]
+        rows.append([InlineKeyboardButton(text=tr["btn_done"], callback_data=f"lv:{ctx}")])
+    else:
+        if lists:
+            rows.append(
+                [InlineKeyboardButton(text=tr["btn_delete_list"], callback_data=f"lm:{ctx}")]
+            )
+        if current:
+            rows.append([InlineKeyboardButton(text=tr["history_btn"], callback_data="hist:years")])
+        else:
+            rows.append(
+                [InlineKeyboardButton(text=tr["back_months"], callback_data=f"hist:y:{year}")]
+            )
+            rows.append([InlineKeyboardButton(text=tr["back_years"], callback_data="hist:years")])
+    return text, InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 @router.message(Command("lists"))
 async def cmd_lists(message: Message) -> None:
-    now = datetime.now(timezone.utc)
-    start, end = _month_bounds(now.year, now.month)
     with session_scope() as session:
         user = _get_or_create(session, message.from_user)
-        lang, currency = user.language, user.currency
-        lists = _lists_in_range(session, user.id, start, end)
-        tr = t(lang)
-        period = f"{month_label(lang, now.month)} {_iso(str(now.year))}"
-        text = _render_lists(
-            lists, currency, tr["lists_title"].format(period=period), tr, lang == "he"
-        )
-    history_button = InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text=tr["history_btn"], callback_data="hist:years")]]
-    )
+        text, kb = _lists_view(session, user, "c")
     await message.answer(
-        text, parse_mode="Markdown", disable_web_page_preview=True, reply_markup=history_button
+        text, parse_mode="Markdown", disable_web_page_preview=True, reply_markup=kb
     )
+
+
+def _years_view(session, user: User, manage: bool = False):
+    """Year picker. Normal: year buttons + 🗑 Delete. Manage: delete-a-year buttons."""
+    tr = t(user.language)
+    year_col = extract("year", ShoppingList.created_at)
+    years = [
+        int(r[0])
+        for r in session.query(year_col)
+        .filter(ShoppingList.user_id == user.id)
+        .distinct()
+        .order_by(year_col.desc())
+        .all()
+    ]
+    if not years:
+        return None, None
+    if manage:
+        rows = [[InlineKeyboardButton(text=f"🗑 {y}", callback_data=f"yd:{y}")] for y in years]
+        rows.append([InlineKeyboardButton(text=tr["btn_done"], callback_data="hist:years")])
+    else:
+        rows = _grid([InlineKeyboardButton(text=str(y), callback_data=f"hist:y:{y}") for y in years])
+        rows.append([InlineKeyboardButton(text=tr["btn_delete_year"], callback_data="ym")])
+    return tr["select_year"], InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _months_view(session, user: User, year: int, manage: bool = False):
+    """Month picker for a year. Normal: month buttons + 🗑 Delete. Manage: delete-a-month."""
+    lang = user.language
+    tr = t(lang)
+    month_col = extract("month", ShoppingList.created_at)
+    year_col = extract("year", ShoppingList.created_at)
+    months = [
+        int(r[0])
+        for r in session.query(month_col)
+        .filter(ShoppingList.user_id == user.id, year_col == year)
+        .distinct()
+        .order_by(month_col)
+        .all()
+    ]
+    if not months:
+        return None, None
+    if manage:
+        rows = [
+            [InlineKeyboardButton(text=f"🗑 {month_short(lang, m)}", callback_data=f"md:{year}.{m}")]
+            for m in months
+        ]
+        rows.append([InlineKeyboardButton(text=tr["btn_done"], callback_data=f"hist:y:{year}")])
+    else:
+        rows = _grid(
+            [
+                InlineKeyboardButton(text=month_short(lang, m), callback_data=f"hist:m:{year}:{m}")
+                for m in months
+            ]
+        )
+        rows.append([InlineKeyboardButton(text=tr["btn_delete_month"], callback_data=f"mm:{year}")])
+        rows.append([InlineKeyboardButton(text=tr["back_years"], callback_data="hist:years")])
+    return tr["select_month"].format(year=year), InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _edit(callback: CallbackQuery, text: str, kb, markdown: bool = True) -> None:
+    try:
+        await callback.message.edit_text(
+            text, parse_mode="Markdown" if markdown else None, reply_markup=kb
+        )
+    except Exception:
+        pass
 
 
 @router.callback_query(F.data == "hist:years")
 async def cb_hist_years(callback: CallbackQuery) -> None:
-    year_col = extract("year", ShoppingList.created_at)
     with session_scope() as session:
         user = _get_or_create(session, callback.from_user)
         tr = t(user.language)
-        years = [
-            int(r[0])
-            for r in session.query(year_col)
-            .filter(ShoppingList.user_id == user.id)
-            .distinct()
-            .order_by(year_col.desc())
-            .all()
-        ]
-    if not years:
+        text, kb = _years_view(session, user)
+    if text is None:
         await callback.answer(tr["no_history"], show_alert=True)
         return
-    buttons = [InlineKeyboardButton(text=str(y), callback_data=f"hist:y:{y}") for y in years]
-    try:
-        await callback.message.edit_text(
-            tr["select_year"],
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=_grid(buttons)),
-        )
-    except Exception:
-        pass
+    await _edit(callback, text, kb)
     await callback.answer()
+
+
+@router.callback_query(F.data == "ym")
+async def cb_year_manage(callback: CallbackQuery) -> None:
+    with session_scope() as session:
+        user = _get_or_create(session, callback.from_user)
+        text, kb = _years_view(session, user, manage=True)
+    if text is not None:
+        await _edit(callback, text, kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("yd:"))
+async def cb_year_del(callback: CallbackQuery) -> None:
+    year = int(callback.data.split(":")[1])
+    with session_scope() as session:
+        tr = t(_get_or_create(session, callback.from_user).language)
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text=tr["btn_yes"], callback_data=f"ydy:{year}"),
+                InlineKeyboardButton(text=tr["btn_no"], callback_data="ym"),
+            ]
+        ]
+    )
+    await _edit(callback, tr["confirm_delete_year"].format(year=year), kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("ydy:"))
+async def cb_year_delyes(callback: CallbackQuery) -> None:
+    year = int(callback.data.split(":")[1])
+    with session_scope() as session:
+        user = _get_or_create(session, callback.from_user)
+        tr = t(user.language)
+        start = datetime(year, 1, 1, tzinfo=timezone.utc)
+        end = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+        count = delete_lists_in_range(session, user.id, start, end)
+        text, kb = _years_view(session, user, manage=True)
+        if text is None:
+            text, kb = tr["no_history"], None
+    await _edit(callback, text, kb)
+    await callback.answer(tr["lists_deleted"].format(n=count))
 
 
 @router.callback_query(F.data.startswith("hist:y:"))
 async def cb_hist_year(callback: CallbackQuery) -> None:
     year = int(callback.data.split(":")[2])
-    month_col = extract("month", ShoppingList.created_at)
-    year_col = extract("year", ShoppingList.created_at)
     with session_scope() as session:
         user = _get_or_create(session, callback.from_user)
-        lang = user.language
-        tr = t(lang)
-        months = [
-            int(r[0])
-            for r in session.query(month_col)
-            .filter(ShoppingList.user_id == user.id, year_col == year)
-            .distinct()
-            .order_by(month_col)
-            .all()
-        ]
-    buttons = [
-        InlineKeyboardButton(text=month_short(lang, m), callback_data=f"hist:m:{year}:{m}")
-        for m in months
-    ]
-    rows = _grid(buttons)
-    rows.append([InlineKeyboardButton(text=tr["back_years"], callback_data="hist:years")])
-    try:
-        await callback.message.edit_text(
-            tr["select_month"].format(year=year),
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
-        )
-    except Exception:
-        pass
+        text, kb = _months_view(session, user, year)
+    if text is None:
+        await cb_hist_years(callback)  # year now empty -> back to years
+        return
+    await _edit(callback, text, kb)
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("mm:"))
+async def cb_month_manage(callback: CallbackQuery) -> None:
+    year = int(callback.data.split(":")[1])
+    with session_scope() as session:
+        user = _get_or_create(session, callback.from_user)
+        tr = t(user.language)
+        text, kb = _months_view(session, user, year, manage=True)
+        if text is None:
+            text, kb = tr["no_history"], None
+    await _edit(callback, text, kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("md:"))
+async def cb_month_del(callback: CallbackQuery) -> None:
+    ym = callback.data.split(":", 1)[1]  # "YYYY.M"
+    year_s, month_s = ym.split(".")
+    with session_scope() as session:
+        lang = _get_or_create(session, callback.from_user).language
+    tr = t(lang)
+    period = f"{month_label(lang, int(month_s))} {year_s}"
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text=tr["btn_yes"], callback_data=f"mdy:{ym}"),
+                InlineKeyboardButton(text=tr["btn_no"], callback_data=f"mm:{year_s}"),
+            ]
+        ]
+    )
+    await _edit(callback, tr["confirm_delete_month"].format(period=period), kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("mdy:"))
+async def cb_month_delyes(callback: CallbackQuery) -> None:
+    year, month = (int(x) for x in callback.data.split(":", 1)[1].split("."))
+    with session_scope() as session:
+        user = _get_or_create(session, callback.from_user)
+        tr = t(user.language)
+        start, end = _month_bounds(year, month)
+        count = delete_lists_in_range(session, user.id, start, end)
+        text, kb = _months_view(session, user, year, manage=True)
+        if text is None:  # year may now be empty
+            text, kb = _years_view(session, user)
+            if text is None:
+                text, kb = tr["no_history"], None
+    await _edit(callback, text, kb)
+    await callback.answer(tr["lists_deleted"].format(n=count))
 
 
 @router.callback_query(F.data.startswith("hist:m:"))
 async def cb_hist_month(callback: CallbackQuery) -> None:
     _, _, year_s, month_s = callback.data.split(":")
-    year, month = int(year_s), int(month_s)
-    start, end = _month_bounds(year, month)
     with session_scope() as session:
         user = _get_or_create(session, callback.from_user)
-        lang, currency = user.language, user.currency
-        tr = t(lang)
-        lists = _lists_in_range(session, user.id, start, end)
-        period = f"{month_label(lang, month)} {_iso(str(year))}"
-        text = _render_lists(
-            lists, currency, tr["lists_title"].format(period=period), tr, lang == "he"
-        )
-    rows = [
-        [InlineKeyboardButton(text=tr["back_months"], callback_data=f"hist:y:{year}")],
-        [InlineKeyboardButton(text=tr["back_years"], callback_data="hist:years")],
-    ]
+        text, kb = _lists_view(session, user, f"{int(year_s)}.{int(month_s)}")
     try:
         await callback.message.edit_text(
-            text,
-            parse_mode="Markdown",
-            disable_web_page_preview=True,
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+            text, parse_mode="Markdown", disable_web_page_preview=True, reply_markup=kb
         )
     except Exception:
         pass
     await callback.answer()
+
+
+async def _edit_lists_view(callback: CallbackQuery, ctx: str, manage: bool) -> None:
+    with session_scope() as session:
+        user = _get_or_create(session, callback.from_user)
+        text, kb = _lists_view(session, user, ctx, manage)
+    try:
+        await callback.message.edit_text(
+            text, parse_mode="Markdown", disable_web_page_preview=True, reply_markup=kb
+        )
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data.startswith("lm:"))
+async def cb_list_manage(callback: CallbackQuery) -> None:
+    """Enter delete mode for a month's lists."""
+    await _edit_lists_view(callback, callback.data.split(":", 1)[1], manage=True)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("lv:"))
+async def cb_list_view(callback: CallbackQuery) -> None:
+    """Leave delete mode (back to the clean view)."""
+    await _edit_lists_view(callback, callback.data.split(":", 1)[1], manage=False)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("ld:"))
+async def cb_list_del(callback: CallbackQuery) -> None:
+    _, id_s, ctx = callback.data.split(":", 2)
+    list_id = int(id_s)
+    with session_scope() as session:
+        tr = t(_get_or_create(session, callback.from_user).language)
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text=tr["btn_yes"], callback_data=f"ldy:{list_id}:{ctx}"),
+                InlineKeyboardButton(text=tr["btn_no"], callback_data=f"lm:{ctx}"),
+            ]
+        ]
+    )
+    try:
+        await callback.message.edit_text(tr["confirm_delete_list"], reply_markup=keyboard)
+    except Exception:
+        pass
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("ldy:"))
+async def cb_list_delyes(callback: CallbackQuery) -> None:
+    _, id_s, ctx = callback.data.split(":", 2)
+    list_id = int(id_s)
+    with session_scope() as session:
+        user = _get_or_create(session, callback.from_user)
+        tr = t(user.language)
+        sl = session.get(ShoppingList, list_id)
+        if sl is not None and sl.user_id == user.id:  # owner check
+            session.delete(sl)
+            session.flush()
+        text, kb = _lists_view(session, user, ctx, manage=True)
+    try:
+        await callback.message.edit_text(
+            text, parse_mode="Markdown", disable_web_page_preview=True, reply_markup=kb
+        )
+    except Exception:
+        pass
+    await callback.answer(tr["list_deleted"])
 
 
 # --- Reply-keyboard buttons (registered before the free-text list parser) ------

@@ -103,11 +103,6 @@
   <button type="submit" class="secondary">{{ t.finish_shopping }}</button>
 </form>
 {% endif %}
-
-<form method="post" action="/api/lists/{{ list.web_token }}/delete" class="delete-form"
-      data-confirm="{{ t.delete_confirm }}">
-  <button type="submit" class="danger">{{ t.delete_list }}</button>
-</form>
 {% endblock %}
 
 {% block scripts %}

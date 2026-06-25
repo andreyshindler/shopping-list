@@ -119,6 +119,22 @@ def add_item_from_pending(
     return item
 
 
+def delete_lists_in_range(
+    session: Session, user_id: int, start: datetime, end: datetime
+) -> int:
+    """Delete all of a user's lists created in [start, end). Items cascade at the DB
+    level. Returns the number of lists deleted."""
+    return (
+        session.query(ShoppingList)
+        .filter(
+            ShoppingList.user_id == user_id,
+            ShoppingList.created_at >= start,
+            ShoppingList.created_at < end,
+        )
+        .delete(synchronize_session=False)
+    )
+
+
 def _recalc_predicted_total(session: Session, shopping_list: ShoppingList) -> None:
     rows = session.scalars(
         select(Item).where(Item.list_id == shopping_list.id)

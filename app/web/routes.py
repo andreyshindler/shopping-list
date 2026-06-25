@@ -135,21 +135,6 @@ def api_finish_list(token: str, session: Session = Depends(get_session)):
     return RedirectResponse(url=f"/list/{token}", status_code=303)
 
 
-@router.post("/api/lists/{token}/delete")
-def api_delete_list(token: str, session: Session = Depends(get_session)):
-    """Permanently delete a list (and its items, via cascade)."""
-    sl = _get_list(session, token)
-    lang = sl.user.language
-    session.delete(sl)
-    session.commit()
-    return RedirectResponse(url=f"/api/deleted?lang={lang}", status_code=303)
-
-
-@router.get("/api/deleted", response_class=HTMLResponse)
-def view_deleted(request: Request, lang: str = "he"):
-    return _templates().TemplateResponse(request, "deleted.html", {**i18n_context(lang)})
-
-
 @router.get("/stats/{stats_token}", response_class=HTMLResponse)
 def view_stats(stats_token: str, request: Request, session: Session = Depends(get_session)):
     user = session.scalar(select(User).where(User.stats_token == stats_token))
