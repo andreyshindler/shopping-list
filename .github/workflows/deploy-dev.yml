@@ -1,0 +1,48 @@
+name: Deploy to VPS (dev)
+
+on:
+  push:
+    branches: [dev]
+
+concurrency:
+  group: deploy-vps-dev
+  cancel-in-progress: true   # newer dev push cancels the in-flight one
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy dev stack over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            cd ${{ secrets.VPS_DEV_REPO_PATH }}   # e.g. ~/projects/shopping-list-dev
+            git fetch origin dev
+            git reset --hard origin/dev
+            docker compose -p shoplist-dev up -d --build
+            docker image prune -f
+
+      - name: Notify admin — success
+        if: success()
+        env:
+          TG: ${{ secrets.DEV_BOT_TOKEN }}
+          CHAT: ${{ secrets.ADMIN_TELEGRAM_ID }}
+        run: |
+          MSG=$(printf '✅ [DEV] Deployed %s\n%s' "${GITHUB_SHA:0:7}" "${{ github.event.head_commit.message }}")
+          curl -s -X POST "https://api.telegram.org/bot${TG}/sendMessage" \
+            -d chat_id="${CHAT}" --data-urlencode text="${MSG}" >/dev/null
+
+      - name: Notify admin — failure
+        if: failure()
+        env:
+          TG: ${{ secrets.DEV_BOT_TOKEN }}
+          CHAT: ${{ secrets.ADMIN_TELEGRAM_ID }}
+        run: |
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          MSG=$(printf '❌ [DEV] Deploy FAILED %s\n%s\nLog: %s' "${GITHUB_SHA:0:7}" "${{ github.event.head_commit.message }}" "$RUN_URL")
+          curl -s -X POST "https://api.telegram.org/bot${TG}/sendMessage" \
+            -d chat_id="${CHAT}" --data-urlencode text="${MSG}" >/dev/null
