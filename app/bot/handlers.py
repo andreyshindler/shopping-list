@@ -669,11 +669,12 @@ async def handle_list_text(message: Message) -> None:
 
         draft = get_active_draft(session, user.id)
         if draft:
+            existing_count = len(draft.items)
             added = append_items_to_list(session, draft, message.text)
             if added == 0:
                 await message.answer(tr["no_items_found"])
                 return
-            total_count = len(draft.items)
+            total_count = existing_count + added
             predicted = draft.predicted_total
             token = draft.web_token
             list_id = draft.id
