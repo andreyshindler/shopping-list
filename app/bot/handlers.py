@@ -198,14 +198,24 @@ async def cmd_report(message: Message, command: CommandObject) -> None:
     await message.answer(tr["report_sent"])
 
 
+def _web_app_btn(text: str, url: str) -> InlineKeyboardButton:
+    if url.startswith("https://"):
+        return InlineKeyboardButton(text=text, web_app=WebAppInfo(url=url))
+    return InlineKeyboardButton(text=text, url=url)
+
+
 @router.message(Command("stats"))
 async def cmd_stats(message: Message) -> None:
     with session_scope() as session:
         user = _get_or_create(session, message.from_user)
         lang, token = user.language, user.stats_token
+    tr = t(lang)
+    stats_url = f"{settings.web_base_url}/stats/{token}"
     await message.answer(
-        t(lang)["stats_link"].format(url=f"{settings.web_base_url}/stats/{token}"),
-        disable_web_page_preview=True,
+        tr["stats_link"],
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[_web_app_btn(tr["btn_stats"], stats_url)]]
+        ),
     )
 
 
@@ -241,9 +251,7 @@ def _render_lists(
             total += sl.real_total
         num = _iso(f"{idx}.")
         meta = _iso(f"{sl.created_at:%Y-%m-%d} · {price_str}")
-        link = f"[{tr['open_link']}]({settings.web_base_url}/list/{sl.web_token})"
-        # RTL: lead with the link so the row reads naturally; the LTR meta is isolated.
-        lines.append(f"{num} {emoji} {link} — {meta}" if rtl else f"{num} {emoji} {meta} — {link}")
+        lines.append(f"{num} {emoji} {meta}")
     amount = f"*{_iso(f'{total:.2f} {currency}')}*"
     lines += ["", tr["total_spent"].format(amount=amount)]
     return "\n".join(lines)
@@ -312,6 +320,10 @@ def _lists_view(
         ]
         rows.append([InlineKeyboardButton(text=tr["btn_done"], callback_data=f"lv:{ctx}")])
     else:
+        for sl in lists:
+            price = _list_price(sl)
+            label = f"🛒 {sl.created_at:%d/%m}" + (f" · {price:.0f} {currency}" if price else "")
+            rows.append([_web_app_btn(label, f"{settings.web_base_url}/list/{sl.web_token}")])
         if lists:
             rows.append(
                 [InlineKeyboardButton(text=tr["btn_delete_list"], callback_data=f"lm:{ctx}")]
@@ -651,11 +663,9 @@ def _list_keyboard(tr: dict, list_id: int, list_url: str) -> InlineKeyboardMarku
     confirm_btn = InlineKeyboardButton(
         text=tr["btn_confirm_list"], callback_data=f"draft:confirm:{list_id}"
     )
-    if list_url.startswith("https://"):
-        open_btn = InlineKeyboardButton(text=tr["open_your_list"], web_app=WebAppInfo(url=list_url))
-    else:
-        open_btn = InlineKeyboardButton(text=tr["open_your_list"], url=list_url)
-    return InlineKeyboardMarkup(inline_keyboard=[[confirm_btn, open_btn]])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[confirm_btn, _web_app_btn(tr["open_your_list"], list_url)]]
+    )
 
 
 @router.message(F.text & ~F.text.startswith("/"))
@@ -733,10 +743,7 @@ async def cb_confirm_draft(callback: CallbackQuery) -> None:
         token = sl.web_token
 
     list_url = f"{settings.web_base_url}/list/{token}"
-    if list_url.startswith("https://"):
-        open_btn = InlineKeyboardButton(text=tr["open_your_list"], web_app=WebAppInfo(url=list_url))
-    else:
-        open_btn = InlineKeyboardButton(text=tr["open_your_list"], url=list_url)
+    open_btn = _web_app_btn(tr["open_your_list"], list_url)
     await callback.message.edit_text(
         tr["draft_confirmed"],
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[open_btn]]),
