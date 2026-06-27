@@ -46,7 +46,8 @@
       if (shareBtn) {
         shareBtn.style.display = "inline-flex";
         shareBtn.addEventListener("click", function () {
-          tg.openTelegramLink("https://t.me/share/url?url=" + encodeURIComponent(location.href));
+          var cleanUrl = location.origin + location.pathname;
+          tg.openTelegramLink("https://t.me/share/url?url=" + encodeURIComponent(cleanUrl));
         });
       }
 
