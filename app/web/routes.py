@@ -202,7 +202,7 @@ def api_report_categories(token: str, session: Session = Depends(get_session)):
 
     user = sl.user
     lines = [
-        f"🐛 Category report from {user.name or user.telegram_id}",
+        f"🐛 Category report from {user.display_name or user.telegram_id}",
         f"List: {sl.created_at:%Y-%m-%d} (id {sl.id})",
         "",
     ]
