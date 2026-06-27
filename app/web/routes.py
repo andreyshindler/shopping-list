@@ -24,7 +24,7 @@ from app.services import (
     toggle_item,
 )
 from app.stats import get_stats
-from app.web.i18n import i18n_context, normalize_lang
+from app.web.i18n import CATEGORY_LABELS, i18n_context, normalize_lang
 
 router = APIRouter()
 
@@ -206,11 +206,12 @@ def api_report_categories(token: str, session: Session = Depends(get_session)):
         f"List: {sl.created_at:%Y-%m-%d} (id {sl.id})",
         "",
     ]
+    cat_labels = CATEGORY_LABELS[normalize_lang(user.language)]
     by_cat: dict[str, list[str]] = {}
     for item in sorted(sl.items, key=lambda i: i.sort_order):
         by_cat.setdefault(item.category, []).append(item.raw_name)
     for cat, names in by_cat.items():
-        lines.append(f"*{cat}*")
+        lines.append(f"*{cat_labels.get(cat, cat)}*")
         lines.extend(f"  • {n}" for n in names)
         lines.append("")
 
