@@ -7,6 +7,8 @@ from dataclasses import dataclass
 
 # Leading bullet / numbering markers to strip from each line.
 _BULLET_RE = re.compile(r"^\s*(?:[-*•·•]|\d+[.)])\s*")
+# Lines that are URLs — skip them entirely.
+_URL_RE = re.compile(r"https?://\S+|t\.me/\S+", re.IGNORECASE)
 # "milk x2" / "milk x 2"
 _TRAILING_X_RE = re.compile(r"\s*[xX]\s*(\d+(?:\.\d+)?)\s*$")
 # "milk - 2" / "milk: 2"
@@ -54,7 +56,7 @@ def parse_message(text: str) -> list[ParsedItem]:
 
     for line in raw_lines:
         cleaned = _BULLET_RE.sub("", line).strip()
-        if not cleaned:
+        if not cleaned or _URL_RE.search(cleaned):
             continue
         name, quantity = _extract_quantity(cleaned)
         if not name:
