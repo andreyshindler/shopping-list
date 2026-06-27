@@ -236,23 +236,28 @@ def _iso(text: str) -> str:
 
 
 def _render_lists(
-    lists: list[ShoppingList], currency: str, title: str, tr: dict[str, str], rtl: bool
+    lists: list[ShoppingList], currency: str, title: str, tr: dict[str, str], rtl: bool,
+    compact: bool = False,
 ) -> str:
     if not lists:
         return f"*{title}*\n\n{tr['no_lists_period']}"
-    lines = [f"*{title}*", ""]
     total = 0.0
+    for sl in lists:
+        if sl.status == "completed" and sl.real_total is not None:
+            total += sl.real_total
+    amount = f"*{_iso(f'{total:.2f} {currency}')}*"
+    if compact:
+        # Buttons show each list; text only needs the title + total.
+        lines = [f"*{title}*", "", tr["total_spent"].format(amount=amount)]
+        return "\n".join(lines)
+    lines = [f"*{title}*", ""]
     for idx, sl in enumerate(lists, 1):
         emoji = "✅" if sl.status == "completed" else "🟡"
         price = _list_price(sl)
         price_str = f"{price:.2f} {currency}" if price else "—"
-        # The total reflects money actually spent, so only completed lists count.
-        if sl.status == "completed" and sl.real_total is not None:
-            total += sl.real_total
         num = _iso(f"{idx}.")
         meta = _iso(f"{sl.created_at:%Y-%m-%d} · {price_str}")
         lines.append(f"{num} {emoji} {meta}")
-    amount = f"*{_iso(f'{total:.2f} {currency}')}*"
     lines += ["", tr["total_spent"].format(amount=amount)]
     return "\n".join(lines)
 
@@ -310,7 +315,10 @@ def _lists_view(
     start, end = _month_bounds(year, month)
     lists = _lists_in_range(session, user.id, start, end)
     period = f"{month_label(lang, month)} {_iso(str(year))}"
-    text = _render_lists(lists, currency, tr["lists_title"].format(period=period), tr, lang == "he")
+    text = _render_lists(
+        lists, currency, tr["lists_title"].format(period=period), tr, lang == "he",
+        compact=not manage,
+    )
 
     rows: list[list[InlineKeyboardButton]] = []
     if manage:
@@ -322,7 +330,8 @@ def _lists_view(
     else:
         for sl in lists:
             price = _list_price(sl)
-            label = f"🛒 {sl.created_at:%d/%m}" + (f" · {price:.0f} {currency}" if price else "")
+            status = "✅" if sl.status == "completed" else "🟡"
+            label = f"{status} {sl.created_at:%d/%m}" + (f" · {price:.0f} {currency}" if price else "")
             rows.append([_web_app_btn(label, f"{settings.web_base_url}/list/{sl.web_token}")])
         if lists:
             rows.append(
