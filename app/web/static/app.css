@@ -234,6 +234,7 @@ button.danger {
 button.danger:hover { background: #fdecea; }
 
 .empty { color: var(--muted); text-align: center; padding: 32px 0; }
+.swipe-hint { color: var(--muted); font-size: 0.78rem; text-align: center; margin: -4px 0 14px; }
 
 /* Stats */
 .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px; }

@@ -25,6 +25,7 @@
   <span style="width: {{ (100 * totals.bought_count / totals.total_count) if totals.total_count else 0 }}%"></span>
 </div>
 
+{% if list.status == "active" and groups %}<p class="swipe-hint">{{ t.swipe_hint }}</p>{% endif %}
 {% for category, members in groups.items() %}
 <section class="category">
   <h2>{{ cat_labels.get(category, category) }}</h2>
