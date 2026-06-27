@@ -11,8 +11,15 @@ from sqlalchemy.orm import Session
 
 from app.categories import CATEGORY_ORDER
 from app.db import get_session
-from app.models import Item, ShoppingList, User
-from app.services import complete_list, end_list, list_totals, toggle_item
+from app.models import Item, ItemSuggestion, ShoppingList, User
+from app.services import (
+    complete_list,
+    end_list,
+    list_totals,
+    resolve_custom_variant,
+    resolve_variant,
+    toggle_item,
+)
 from app.stats import get_stats
 from app.web.i18n import i18n_context, normalize_lang
 
@@ -102,6 +109,42 @@ def api_toggle_item(item_id: int, session: Session = Depends(get_session)):
             "totals": totals,
         }
     )
+
+
+@router.post("/api/items/{item_id}/choose-variant")
+def api_choose_variant(
+    item_id: int,
+    suggestion_id: int = Form(...),
+    session: Session = Depends(get_session),
+):
+    """Resolve an ambiguous item to the picked variant, then reload the list."""
+    item = session.get(Item, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Item not found")
+    suggestion = session.get(ItemSuggestion, suggestion_id)
+    if suggestion is None or suggestion.item_id != item.id:
+        raise HTTPException(status_code=404, detail="Suggestion not found")
+    token = item.shopping_list.web_token
+    resolve_variant(session, item, suggestion)
+    session.commit()
+    return RedirectResponse(url=f"/list/{token}", status_code=303)
+
+
+@router.post("/api/items/{item_id}/custom-variant")
+def api_custom_variant(
+    item_id: int,
+    name: str = Form(...),
+    session: Session = Depends(get_session),
+):
+    """Resolve an ambiguous item to a free-text product the user typed, then reload."""
+    item = session.get(Item, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Item not found")
+    token = item.shopping_list.web_token
+    if name.strip():
+        resolve_custom_variant(session, item, name.strip())
+        session.commit()
+    return RedirectResponse(url=f"/list/{token}", status_code=303)
 
 
 @router.post("/api/lists/{token}/complete")

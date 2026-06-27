@@ -9,9 +9,6 @@ from sqlalchemy.orm import Session
 
 from app.models import PriceHistory
 
-# Number of most recent records to average when predicting a price.
-_HISTORY_WINDOW = 5
-
 _WHITESPACE_RE = re.compile(r"\s+")
 
 
@@ -35,22 +32,24 @@ def normalize_name(name: str) -> str:
 
 
 def predicted_price(session: Session, user_id: int, normalized_name: str) -> float | None:
-    """Predict a price as the average of the user's recent real prices for this item.
+    """Predict a price as the user's most recently paid price for this item.
 
-    Returns ``None`` when the item has never been purchased before.
+    Using the latest price (rather than an average) means a corrected price takes
+    effect immediately next time. Returns ``None`` when the item has never been
+    purchased before.
     """
-    rows = session.scalars(
+    price = session.scalar(
         select(PriceHistory.price)
         .where(
             PriceHistory.user_id == user_id,
             PriceHistory.normalized_name == normalized_name,
         )
-        .order_by(PriceHistory.recorded_at.desc())
-        .limit(_HISTORY_WINDOW)
-    ).all()
-    if not rows:
+        .order_by(PriceHistory.recorded_at.desc(), PriceHistory.id.desc())
+        .limit(1)
+    )
+    if price is None:
         return None
-    return round(sum(rows) / len(rows), 2)
+    return round(price, 2)
 
 
 def record_price(

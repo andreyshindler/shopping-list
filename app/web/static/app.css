@@ -116,8 +116,59 @@ li.item .name { flex: 1; }
 li.item .qty { color: var(--muted); font-size: 0.85rem; margin-inline-start: 6px; }
 li.item .price { color: var(--ink); font-weight: 600; }
 li.item .price.unknown { color: var(--muted); font-weight: 400; font-size: 0.85rem; }
+li.item .price.real { color: var(--green); }
 li.item.bought .name { text-decoration: line-through; color: var(--muted); }
 li.item.bought { opacity: 0.7; }
+
+/* Variant picker for ambiguous items ("pepper" -> red / yellow bell pepper).
+   Highlighted yellow until the user picks the specific product they want. */
+li.item.needs-choice {
+  cursor: default;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  background: #fff8e1;
+  border: 1px solid #ffe082;
+  border-inline-start: 4px solid #ffc107;
+}
+li.item.needs-choice .name { font-weight: 600; }
+.variants { display: flex; flex-direction: column; gap: 10px; }
+.variants-hint { color: var(--muted); font-size: 0.85rem; }
+.variant-group { display: flex; flex-direction: column; gap: 6px; }
+.variant-cat {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+.variant-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.variant-form { margin: 0; }
+button.variant {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #eef5ff;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+button.variant:hover { background: #e0ecff; }
+button.variant .price { color: var(--muted); font-weight: 600; font-size: 0.8rem; }
+.variant-custom { display: flex; gap: 6px; margin-top: 4px; }
+.variant-custom input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.9rem;
+}
+button.variant.add { background: #e8f5e9; border-color: #c8e6c9; }
+button.variant.add:hover { background: #d7eed9; }
 
 .bought-section h2 { color: var(--green); }
 

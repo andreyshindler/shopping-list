@@ -35,6 +35,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "bought": "Bought",
         "bought_section": "✓ Bought",
         "no_history": "no history",
+        "pick_variant": "Which one? Tap to choose:",
+        "custom_variant": "Or type your own product",
+        "add": "Add",
         "all_done": "All done! 🎉",
         "enter_paid": "Enter what you actually paid so we can improve "
         "predictions and your statistics.",
@@ -61,6 +64,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "bought": "נקנו",
         "bought_section": "✓ נקנו",
         "no_history": "אין היסטוריה",
+        "pick_variant": "איזה מהם? הקישו לבחירה:",
+        "custom_variant": "או הקלידו מוצר משלכם",
+        "add": "הוסף",
         "all_done": "הכול מוכן! 🎉",
         "enter_paid": "הזינו כמה שילמתם בפועל כדי לשפר את התחזיות "
         "והסטטיסטיקה שלכם.",

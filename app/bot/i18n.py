@@ -101,6 +101,7 @@ BOT_TEXT: dict[str, dict[str, str]] = {
         "pending_added": "נוסף ✅",
         "pending_cleared": "הפריטים שנשמרו נמחקו.",
         "pending_done": "הכול טופל. ✅",
+        "pending_added_list": "נוספו לרשימה:\n{items}",
     },
     "en": {
         "help": (
@@ -186,6 +187,7 @@ BOT_TEXT: dict[str, dict[str, str]] = {
         "pending_added": "Added ✅",
         "pending_cleared": "Carried-over items cleared.",
         "pending_done": "All set. ✅",
+        "pending_added_list": "Added to your list:\n{items}",
     },
 }
 

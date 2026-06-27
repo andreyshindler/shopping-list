@@ -42,5 +42,16 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  # One-shot daily job (not started by `docker compose up`). Triggered by a host
+  # cron via `docker compose run --rm price-fetch`. See docs/price-fetch-cron.md.
+  price-fetch:
+    build: .
+    command: python -m app.jobs.fetch_prices
+    env_file: .env
+    profiles: ["jobs"]
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   pgdata:

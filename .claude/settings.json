@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rtk docker *)",
+      "Bash(curl -s -o /dev/null -w \"GET / : %{http_code}\\\\n\" http://localhost:8000/)",
+      "Bash(curl -s -o /dev/null -w \"GET list : %{http_code}\\\\n\" http://localhost:8000/list/08d266471c7f44cba8b5f86709155241)",
+      "Bash(rtk proxy *)",
+      "Bash(docker compose *)",
+      "Bash(curl -s --cookie \"lang=en\" http://localhost:8000/list/08d266471c7f44cba8b5f86709155241)",
+      "Bash(curl -s http://localhost:8000/list/08d266471c7f44cba8b5f86709155241)",
+      "Bash(.venv/Scripts/python.exe -c ' *)",
+      "Bash(.venv/Scripts/python.exe -c \"import ast; ast.parse\\(open\\('app/bot/handlers.py',encoding='utf-8'\\).read\\(\\)\\); print\\('syntax OK'\\)\")",
+      "Bash(PYTHONIOENCODING=utf-8 .venv/Scripts/python.exe -c ' *)"
+    ]
+  },
+  "enabledPlugins": {
+    "token-optimizer@alexgreensh-token-optimizer": true
+  }
+}

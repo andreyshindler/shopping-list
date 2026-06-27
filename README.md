@@ -12,8 +12,14 @@ predictions**, and spending **statistics**.
    for **monthly/yearly statistics** and feeds future price predictions.
 
 Predicted prices are learned from **your own** past purchases (the average of recent
-real prices for the same item) — no scraping, no external API. The first time you buy
-an item there's no prediction; it appears once you've completed a list with that item.
+real prices for the same item). The first time you buy an item there's no personal
+history, so the price falls back to a **shared global catalog** scraped daily from the
+Shufersal price feed. When a typed term is generic ("פלפל"), the web list offers the
+matching **variants** ("פלפל אדום", "פלפל צהוב") to pick from. See
+[docs/price-fetch-cron.md](docs/price-fetch-cron.md) for the daily catalog job.
+
+> Working on the code? See [CLAUDE.md](CLAUDE.md) for the architecture, conventions,
+> and commands (also used by Claude Code).
 
 ## Architecture
 
@@ -22,7 +28,7 @@ an item there's no prediction; it appears once you've completed a list with that
 | Telegram bot | Python, [aiogram](https://docs.aiogram.dev) (long polling) |
 | Web app/API | [FastAPI](https://fastapi.tiangolo.com) + Jinja2 + vanilla JS |
 | Database | PostgreSQL (SQLAlchemy 2.0 + Alembic migrations) |
-| Deploy | Docker Compose (`db`, `migrate`, `web`, `bot`) |
+| Deploy | Docker Compose (`db`, `migrate`, `web`, `bot`; `price-fetch` job via cron) |
 
 ```
 app/
@@ -32,10 +38,12 @@ app/
   parsing.py       free text -> items (quantities, bullets, commas)
   categories.py    keyword map + categorize()
   pricing.py       normalize_name() + learned predicted_price()
+  global_prices.py global catalog matching + variant suggestions
   stats.py         monthly/yearly aggregation
-  services.py      shared business logic (create/toggle/complete)
+  services.py      shared business logic (create/toggle/complete/resolve_variant)
   bot/             aiogram handlers + entrypoint
   web/             FastAPI routes, templates, static
+  jobs/            fetch_prices.py — daily global catalog refresh
 mockups/           standalone clickable HTML mockups (open index.html)
 migrations/        Alembic
 tests/             pytest

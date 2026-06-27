@@ -30,15 +30,43 @@
   <h2>{{ cat_labels.get(category, category) }}</h2>
   <ul class="items">
     {% for item in members %}
+    {% if item.needs_choice and list.status == "active" %}
+    <li class="item needs-choice">
+      <span class="name">{{ item.raw_name }}{% if item.quantity != 1 %}<span class="qty">×{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }}</span>{% endif %}</span>
+      <div class="variants">
+        <span class="variants-hint">{{ t.pick_variant }}</span>
+        {% for category, group in item.suggestions|groupby("category") %}
+        <div class="variant-group">
+          <span class="variant-cat">{{ cat_labels.get(category, category) }}</span>
+          <div class="variant-options">
+            {% for s in group %}
+            <form method="post" action="/api/items/{{ item.id }}/choose-variant" class="variant-form">
+              <input type="hidden" name="suggestion_id" value="{{ s.id }}" />
+              <button type="submit" class="variant">{{ s.name }}{% if s.price is not none %}<span class="price">{{ money(s.price) }}</span>{% endif %}</button>
+            </form>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+        <form method="post" action="/api/items/{{ item.id }}/custom-variant" class="variant-custom">
+          <input type="text" name="name" placeholder="{{ t.custom_variant }}" required />
+          <button type="submit" class="variant add">{{ t.add }}</button>
+        </form>
+      </div>
+    </li>
+    {% else %}
     <li class="item" data-id="{{ item.id }}">
       <span class="check">{{ check_svg|safe }}</span>
       <span class="name">{{ item.raw_name }}{% if item.quantity != 1 %}<span class="qty">×{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }}</span>{% endif %}</span>
-      {% if item.predicted_price is not none %}
+      {% if item.real_price is not none %}
+        <span class="price real">{{ money(item.real_price) }}</span>
+      {% elif item.predicted_price is not none %}
         <span class="price">{{ money(item.predicted_price * item.quantity) }}</span>
       {% else %}
         <span class="price unknown">{{ t.no_history }}</span>
       {% endif %}
     </li>
+    {% endif %}
     {% endfor %}
   </ul>
 </section>
@@ -52,7 +80,9 @@
     <li class="item bought" data-id="{{ item.id }}">
       <span class="check">{{ check_svg|safe }}</span>
       <span class="name">{{ item.raw_name }}{% if item.quantity != 1 %}<span class="qty">×{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }}</span>{% endif %}</span>
-      {% if item.predicted_price is not none %}
+      {% if item.real_price is not none %}
+        <span class="price real">{{ money(item.real_price) }}</span>
+      {% elif item.predicted_price is not none %}
         <span class="price">{{ money(item.predicted_price * item.quantity) }}</span>
       {% endif %}
     </li>

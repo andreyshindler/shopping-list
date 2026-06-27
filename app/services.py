@@ -2,13 +2,29 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.categories import categorize
-from app.models import Item, PendingItem, PriceHistory, ShoppingList, User
+from app.global_prices import (
+    find_variants,
+    global_estimate,
+    is_ambiguous,
+    variant_category,
+)
+from app.models import (
+    GlobalProduct,
+    Item,
+    ItemSuggestion,
+    PendingItem,
+    PriceHistory,
+    ShoppingList,
+    User,
+    UserProduct,
+)
 from app.parsing import parse_message
 from app.pricing import normalize_name, predicted_price
 
@@ -44,23 +60,103 @@ def create_list_from_text(session: Session, user: User, text: str) -> ShoppingLi
     for order, p in enumerate(parsed):
         norm = normalize_name(p.name)
         price = predicted_price(session, user.id, norm)
+        item = Item(
+            list_id=shopping_list.id,
+            raw_name=p.name,
+            normalized_name=norm,
+            category=categorize(norm),
+            quantity=p.quantity,
+            predicted_price=price,
+            sort_order=order,
+        )
+        price = enrich_item_with_global(session, user.id, item)
         if price is not None:
             predicted_total += price * p.quantity
-        session.add(
-            Item(
-                list_id=shopping_list.id,
-                raw_name=p.name,
-                normalized_name=norm,
-                category=categorize(norm),
-                quantity=p.quantity,
-                predicted_price=price,
-                sort_order=order,
-            )
-        )
+        session.add(item)
 
     shopping_list.predicted_total = round(predicted_total, 2)
     session.flush()
     return shopping_list
+
+
+def enrich_item_with_global(session: Session, user_id: int, item: Item) -> float | None:
+    """Attach variant suggestions for generic terms ("פלפל" -> "פלפל אדום"...) and fill
+    the price from the shared global catalog when there's no personal history.
+
+    The variant picker is offered for any ambiguous generic term, even one the user has
+    bought before — personal history (when present) still sets the predicted price; the
+    catalog price is only used as a fallback. Shared by fresh list creation and
+    carry-over. Returns the item's resulting predicted price (folded into the total).
+    """
+    variants = find_variants(session, item.raw_name)
+    if item.predicted_price is None and variants:  # no history -> fall back to catalog
+        item.predicted_price = global_estimate(variants)
+    candidates = _candidate_variants(session, user_id, item.normalized_name, variants)
+    # Offer the picker for generic catalog terms, or whenever the user has prior picks
+    # (including their own free-text additions) remembered for this term.
+    has_prior_pick = any(c.rank > 0 for c in candidates)
+    if candidates and (is_ambiguous(item.raw_name, variants) or has_prior_pick):
+        item.needs_choice = True
+        for c in candidates:
+            item.suggestions.append(
+                ItemSuggestion(
+                    name=c.name,
+                    normalized_name=c.normalized_name,
+                    category=c.category,
+                    price=c.price,
+                )
+            )
+    return item.predicted_price
+
+
+@dataclass
+class _Candidate:
+    name: str
+    normalized_name: str
+    category: str
+    price: float | None
+    rank: int  # pick_count for the user's prior picks (0 for catalog-only variants)
+
+
+def _candidate_variants(
+    session: Session, user_id: int, query_normalized: str, variants: list[GlobalProduct]
+) -> list[_Candidate]:
+    """Merge catalog variants with the user's remembered picks for this term.
+
+    Catalog variants and the user's prior picks (including free-text additions, which
+    aren't in the catalog) are deduped by normalized name and ordered so previously
+    picked ones come first, then by price."""
+    by_norm: dict[str, _Candidate] = {}
+    for v in variants:
+        by_norm[v.normalized_name] = _Candidate(
+            v.name, v.normalized_name, variant_category(v), v.price, rank=0
+        )
+    picks = session.scalars(
+        select(UserProduct).where(
+            UserProduct.user_id == user_id,
+            UserProduct.query_normalized == query_normalized,
+        )
+    ).all()
+    for p in picks:
+        existing = by_norm.get(p.chosen_normalized)
+        if existing is not None:
+            existing.rank = p.pick_count
+        else:
+            by_norm[p.chosen_normalized] = _Candidate(
+                p.chosen_name, p.chosen_normalized, categorize(p.chosen_normalized),
+                p.price, rank=p.pick_count,
+            )
+    # Personal purchase history is the source of truth: if the user has since bought a
+    # candidate (e.g. a free-text product they added with no price last time), prefer
+    # its real-paid price over the stale catalog/UserProduct price.
+    for c in by_norm.values():
+        hist = predicted_price(session, user_id, c.normalized_name)
+        if hist is not None:
+            c.price = hist
+    return sorted(
+        by_norm.values(),
+        key=lambda c: (-c.rank, c.price if c.price is not None else 0.0),
+    )
 
 
 def toggle_item(session: Session, item: Item) -> Item:
@@ -112,11 +208,104 @@ def add_item_from_pending(
         from_pending=True,
     )
     session.add(item)
+    # Carried-over items get the same global fallback + variant picker as fresh ones.
+    price = enrich_item_with_global(session, shopping_list.user_id, item)
     if price is not None:
         shopping_list.predicted_total = round(
             (shopping_list.predicted_total or 0.0) + price * pending.quantity, 2
         )
     return item
+
+
+def resolve_variant(
+    session: Session, item: Item, suggestion: ItemSuggestion
+) -> Item:
+    """Resolve an ambiguous item to the picked variant and remember the choice.
+
+    Rewrites the item to the chosen product, clears its pending suggestions, refreshes
+    the list total, and records the pick in ``user_products`` so the variant is seeded
+    into the user's products and ranked first next time the same term is typed.
+    """
+    shopping_list = item.shopping_list
+    query_normalized = item.normalized_name  # the generic term the user typed
+
+    item.raw_name = suggestion.name
+    item.normalized_name = suggestion.normalized_name
+    item.category = categorize(suggestion.normalized_name)
+    # Prefer the user's own paid history for this exact product over the suggestion's
+    # catalog price, so a product they've bought before keeps its real price.
+    hist = predicted_price(session, shopping_list.user_id, suggestion.normalized_name)
+    item.predicted_price = hist if hist is not None else suggestion.price
+    item.needs_choice = False
+    # delete-orphan cascade removes the rows on flush and empties the collection.
+    item.suggestions.clear()
+
+    _record_user_pick(
+        session, shopping_list, query_normalized,
+        suggestion.name, suggestion.normalized_name, suggestion.price,
+    )
+    session.flush()
+    _recalc_predicted_total(session, shopping_list)
+    return item
+
+
+def resolve_custom_variant(session: Session, item: Item, name: str) -> Item:
+    """Resolve an ambiguous item to a free-text product the user typed themselves.
+
+    Works like ``resolve_variant`` but for a product that wasn't among the suggestions:
+    the typed name becomes the item, its price comes from the user's history (if any),
+    and the pick is remembered so it reappears as a suggestion next time."""
+    shopping_list = item.shopping_list
+    query_normalized = item.normalized_name  # the generic term the user typed
+    norm = normalize_name(name)
+
+    item.raw_name = name
+    item.normalized_name = norm
+    item.category = categorize(norm)
+    item.predicted_price = predicted_price(session, shopping_list.user_id, norm)
+    item.needs_choice = False
+    item.suggestions.clear()
+
+    _record_user_pick(
+        session, shopping_list, query_normalized, name, norm, item.predicted_price
+    )
+    session.flush()
+    _recalc_predicted_total(session, shopping_list)
+    return item
+
+
+def _record_user_pick(
+    session: Session,
+    shopping_list: ShoppingList,
+    query_normalized: str,
+    chosen_name: str,
+    chosen_normalized: str,
+    price: float | None,
+) -> None:
+    existing = session.scalar(
+        select(UserProduct).where(
+            UserProduct.user_id == shopping_list.user_id,
+            UserProduct.query_normalized == query_normalized,
+            UserProduct.chosen_normalized == chosen_normalized,
+        )
+    )
+    now = datetime.now(timezone.utc)
+    if existing is None:
+        session.add(
+            UserProduct(
+                user_id=shopping_list.user_id,
+                query_normalized=query_normalized,
+                chosen_name=chosen_name,
+                chosen_normalized=chosen_normalized,
+                price=price,
+                currency=shopping_list.user.currency,
+                updated_at=now,
+            )
+        )
+    else:
+        existing.pick_count += 1
+        existing.price = price
+        existing.updated_at = now
 
 
 def delete_lists_in_range(

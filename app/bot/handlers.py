@@ -26,7 +26,7 @@ from app.bot.i18n import (
 )
 from app.config import get_settings
 from app.db import session_scope
-from app.models import PendingItem, ShoppingList, User
+from app.models import Item, PendingItem, ShoppingList, User
 from app.services import (
     add_item_from_pending,
     create_list_from_text,
@@ -706,17 +706,35 @@ async def cb_pend_add(callback: CallbackQuery) -> None:
         if pending and sl and pending.user_id == user.id and sl.user_id == user.id:
             add_item_from_pending(session, sl, pending)
             session.delete(pending)
+            session.flush()  # so the removed item drops out of the rebuilt keyboard
         rows = _pending_rows(session, user.id)
+        # When the last carry-over item is added, list everything that was added.
+        added = [] if rows else _added_from_carryover(session, list_id)
     await callback.answer(tr["pending_added"])
     try:
         if rows:
             await callback.message.edit_reply_markup(
                 reply_markup=_pending_keyboard(rows, list_id, tr)
             )
+        elif added:
+            items = "\n".join(f"• {name}" for name in added)
+            await callback.message.edit_text(tr["pending_added_list"].format(items=items))
         else:
             await callback.message.edit_text(tr["pending_done"])
     except Exception:
         pass
+
+
+def _added_from_carryover(session, list_id: int) -> list[str]:
+    """Names of items in a list that were added from carried-over (pending) items."""
+    return [
+        i.raw_name
+        for i in session.scalars(
+            select(Item)
+            .where(Item.list_id == list_id, Item.from_pending.is_(True))
+            .order_by(Item.sort_order)
+        ).all()
+    ]
 
 
 @router.callback_query(F.data.startswith("pend:clear"))

@@ -1,0 +1,20 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Web app",
+      "type": "python",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app.web.main:app", "--reload"],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Bot",
+      "type": "python",
+      "request": "launch",
+      "module": "app.bot.main",
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

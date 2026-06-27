@@ -33,11 +33,12 @@ def test_predicted_price_none_without_history(session):
     assert predicted_price(session, user_id=1, normalized_name="milk") is None
 
 
-def test_predicted_price_averages_recent(session):
+def test_predicted_price_uses_most_recent(session):
+    # The latest paid price wins, so a corrected price takes effect immediately.
     for price in (2.0, 3.0, 4.0):
         record_price(session, user_id=1, normalized_name="milk", price=price, currency="USD")
     session.flush()
-    assert predicted_price(session, user_id=1, normalized_name="milk") == 3.0
+    assert predicted_price(session, user_id=1, normalized_name="milk") == 4.0
 
 
 def test_predicted_price_scoped_per_user(session):

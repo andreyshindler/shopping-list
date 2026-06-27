@@ -27,6 +27,15 @@ class Settings(BaseSettings):
     # Defaults
     default_currency: str = "ILS"
 
+    # Global price feed (Shufersal). Used by the daily app.jobs.fetch_prices job that
+    # populates the shared global_products catalog.
+    shufersal_store_id: str = "7290027600007"
+    price_fetch_max_files: int = 5
+    global_price_currency: str = "ILS"
+    # Skip TLS verification for the price feed. Off by default (production stays
+    # secure); enable only on networks with TLS interception (e.g. a local proxy).
+    price_fetch_insecure: bool = False
+
 
 @lru_cache
 def get_settings() -> Settings:
