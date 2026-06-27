@@ -111,6 +111,18 @@ def api_toggle_item(item_id: int, session: Session = Depends(get_session)):
     )
 
 
+@router.post("/api/items/{item_id}/delete")
+def api_delete_item(item_id: int, session: Session = Depends(get_session)):
+    item = session.get(Item, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Item not found")
+    if item.shopping_list.status != "active":
+        raise HTTPException(status_code=400, detail="List is not active")
+    session.delete(item)
+    session.commit()
+    return JSONResponse({"ok": True})
+
+
 @router.post("/api/items/{item_id}/choose-variant")
 def api_choose_variant(
     item_id: int,

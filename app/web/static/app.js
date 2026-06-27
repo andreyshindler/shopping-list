@@ -44,9 +44,65 @@ function initCompleteForm() {
   sync();
 }
 
+async function deleteItem(li) {
+  try {
+    const res = await fetch(`/api/items/${li.dataset.id}/delete`, { method: "POST" });
+    if (!res.ok) throw new Error("delete failed");
+    window.location.reload();
+  } catch {
+    li.style.transform = "";
+    li.style.background = "";
+    li.style.pointerEvents = "";
+  }
+}
+
+function initSwipeDelete() {
+  document.querySelectorAll("li.item[data-id]:not(.bought)").forEach((li) => {
+    let startX = 0, startY = 0, dx = 0, dragging = false;
+    const THRESHOLD = 80;
+
+    li.addEventListener("touchstart", (e) => {
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      dx = 0;
+      dragging = false;
+      li.style.transition = "none";
+    }, { passive: true });
+
+    li.addEventListener("touchmove", (e) => {
+      const newDx = e.touches[0].clientX - startX;
+      const dy = e.touches[0].clientY - startY;
+      if (!dragging && Math.abs(dy) > Math.abs(newDx)) return; // vertical scroll wins
+      if (newDx > 0) return; // ignore right swipe
+      dragging = true;
+      dx = newDx;
+      e.preventDefault();
+      li.style.transform = `translateX(${Math.max(dx, -li.offsetWidth)}px)`;
+      li.style.background = `rgba(231,76,60,${Math.min(1, Math.abs(dx) / THRESHOLD) * 0.2})`;
+    }, { passive: false });
+
+    li.addEventListener("touchend", () => {
+      li.style.transition = "";
+      li._swiped = dragging;
+      if (dragging && dx < -THRESHOLD) {
+        li.style.pointerEvents = "none";
+        deleteItem(li);
+      } else {
+        li.style.transform = "";
+        li.style.background = "";
+      }
+      dragging = false;
+    });
+  });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll("li.item[data-id]").forEach((el) => {
-    el.addEventListener("click", () => toggleItem(el));
+    el.addEventListener("click", () => {
+      if (el._swiped) { el._swiped = false; return; }
+      toggleItem(el);
+    });
   });
   initCompleteForm();
+  initSwipeDelete();
 });
