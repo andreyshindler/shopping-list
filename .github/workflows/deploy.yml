@@ -31,8 +31,10 @@ jobs:
         env:
           TG: ${{ secrets.BOT_TOKEN }}
           CHAT: ${{ secrets.ADMIN_TELEGRAM_ID }}
+          # Pass via env so quotes/backticks in the commit message can't break the shell.
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
-          MSG=$(printf '✅ Deployed %s\n%s' "${GITHUB_SHA:0:7}" "${{ github.event.head_commit.message }}")
+          MSG=$(printf '✅ Deployed %s\n%s' "${GITHUB_SHA:0:7}" "${COMMIT_MSG}")
           curl -s -X POST "https://api.telegram.org/bot${TG}/sendMessage" \
             -d chat_id="${CHAT}" --data-urlencode text="${MSG}" >/dev/null
 
@@ -41,8 +43,9 @@ jobs:
         env:
           TG: ${{ secrets.BOT_TOKEN }}
           CHAT: ${{ secrets.ADMIN_TELEGRAM_ID }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          MSG=$(printf '❌ Deploy FAILED %s\n%s\nLog: %s' "${GITHUB_SHA:0:7}" "${{ github.event.head_commit.message }}" "$RUN_URL")
+          MSG=$(printf '❌ Deploy FAILED %s\n%s\nLog: %s' "${GITHUB_SHA:0:7}" "${COMMIT_MSG}" "${RUN_URL}")
           curl -s -X POST "https://api.telegram.org/bot${TG}/sendMessage" \
             -d chat_id="${CHAT}" --data-urlencode text="${MSG}" >/dev/null
