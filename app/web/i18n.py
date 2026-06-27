@@ -78,7 +78,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "list_ended": "🏁 הקנייה הסתיימה",
         "missing_saved": "הפריטים שלא קנית נשמרו לרשימה הבאה.",
         "empty_list": "הרשימה ריקה.",
-        "swipe_hint": "החלק שמאלה על פריט כדי למחוק →",
+        "swipe_hint": "← החלק שמאלה על פריט כדי למחוק",
         "completed": "✅ הושלם",
         "real_total_spent": "סכום ששולם בפועל",
         "total_spent": "סך ההוצאות",
