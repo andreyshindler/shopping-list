@@ -101,6 +101,18 @@ async def cmd_start(message: Message) -> None:
     )
 
 
+@router.message(F.web_app_data)
+async def handle_webapp_close(message: Message) -> None:
+    """Fired when the Mini App calls sendData('close') — restores the reply keyboard."""
+    with session_scope() as session:
+        lang = _get_or_create(session, message.from_user).language
+    await message.answer(
+        t(lang)["help"],
+        parse_mode="Markdown",
+        reply_markup=main_keyboard(lang, _is_admin(message.from_user.id)),
+    )
+
+
 @router.message(Command("help"))
 async def cmd_help(message: Message) -> None:
     await cmd_start(message)
