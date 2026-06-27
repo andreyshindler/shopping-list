@@ -657,8 +657,10 @@ async def handle_list_text(message: Message) -> None:
     text.append(
         tr["price_breakdown"].format(with_price=_iso(with_price), without_price=_iso(without_price))
     )
-    text.append(f"\n{tr['open_your_list']}\n{settings.web_base_url}/list/{token}")
-    await message.answer("\n".join(text), parse_mode="Markdown", disable_web_page_preview=True)
+    open_btn = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text=tr["open_your_list"], url=f"{settings.web_base_url}/list/{token}")
+    ]])
+    await message.answer("\n".join(text), parse_mode="Markdown", reply_markup=open_btn)
 
     # Offer carried-over items (saved when an earlier list was ended early).
     if pending:
