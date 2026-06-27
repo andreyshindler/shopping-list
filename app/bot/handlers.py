@@ -30,9 +30,11 @@ from app.db import session_scope
 from app.models import Item, PendingItem, ShoppingList, User
 from app.services import (
     add_item_from_pending,
+    append_items_to_list,
     create_list_from_text,
     delete_lists_in_range,
     discard_carryover,
+    get_active_draft,
     get_or_create_user,
 )
 
@@ -645,46 +647,101 @@ async def btn_currency(message: Message) -> None:
     await message.answer(t(lang)["currency_current"].format(cur=current), parse_mode="Markdown")
 
 
+def _list_keyboard(tr: dict, list_id: int, list_url: str) -> InlineKeyboardMarkup:
+    confirm_btn = InlineKeyboardButton(
+        text=tr["btn_confirm_list"], callback_data=f"draft:confirm:{list_id}"
+    )
+    if list_url.startswith("https://"):
+        open_btn = InlineKeyboardButton(text=tr["open_your_list"], web_app=WebAppInfo(url=list_url))
+    else:
+        open_btn = InlineKeyboardButton(text=tr["open_your_list"], url=list_url)
+    return InlineKeyboardMarkup(inline_keyboard=[[confirm_btn, open_btn]])
+
+
 @router.message(F.text & ~F.text.startswith("/"))
 async def handle_list_text(message: Message) -> None:
     with session_scope() as session:
         user = _get_or_create(session, message.from_user)
         lang, currency = user.language, user.currency
         tr = t(lang)
-        shopping_list = create_list_from_text(session, user, message.text)
-        if shopping_list is None:
-            await message.answer(tr["no_items_found"])
-            return
-        count = len(shopping_list.items)
-        with_price = sum(1 for i in shopping_list.items if i.predicted_price is not None)
-        without_price = count - with_price
-        predicted = shopping_list.predicted_total
-        token = shopping_list.web_token
-        list_id = shopping_list.id
-        pending = _pending_rows(session, user.id)
 
-    text = [tr["added"].format(count=count)]
-    if predicted > 0:
-        amount = f"*{_iso(f'{predicted:.2f} {currency}')}*"
-        text.append(tr["predicted_total"].format(amount=amount))
-    text.append(
-        tr["price_breakdown"].format(with_price=_iso(with_price), without_price=_iso(without_price))
-    )
+        draft = get_active_draft(session, user.id)
+        if draft:
+            added = append_items_to_list(session, draft, message.text)
+            if added == 0:
+                await message.answer(tr["no_items_found"])
+                return
+            total_count = len(draft.items)
+            predicted = draft.predicted_total
+            token = draft.web_token
+            list_id = draft.id
+            pending = []
+            is_new = False
+        else:
+            shopping_list = create_list_from_text(session, user, message.text)
+            if shopping_list is None:
+                await message.answer(tr["no_items_found"])
+                return
+            added = len(shopping_list.items)
+            total_count = added
+            with_price = sum(1 for i in shopping_list.items if i.predicted_price is not None)
+            without_price = added - with_price
+            predicted = shopping_list.predicted_total
+            token = shopping_list.web_token
+            list_id = shopping_list.id
+            pending = _pending_rows(session, user.id)
+            is_new = True
+
     list_url = f"{settings.web_base_url}/list/{token}"
-    # web_app opens instantly with no "open link?" prompt; requires HTTPS.
-    # Fall back to a plain URL button on HTTP (local dev).
-    if list_url.startswith("https://"):
-        list_btn = InlineKeyboardButton(text=tr["open_your_list"], web_app=WebAppInfo(url=list_url))
+    if is_new:
+        text = [tr["added"].format(count=added)]
+        if predicted > 0:
+            amount = f"*{_iso(f'{predicted:.2f} {currency}')}*"
+            text.append(tr["predicted_total"].format(amount=amount))
+        text.append(
+            tr["price_breakdown"].format(with_price=_iso(with_price), without_price=_iso(without_price))
+        )
     else:
-        list_btn = InlineKeyboardButton(text=tr["open_your_list"], url=list_url)
-    open_btn = InlineKeyboardMarkup(inline_keyboard=[[list_btn]])
-    await message.answer("\n".join(text), parse_mode="Markdown", reply_markup=open_btn)
+        text = [tr["draft_added"].format(count=added, total=total_count)]
+        if predicted > 0:
+            amount = f"*{_iso(f'{predicted:.2f} {currency}')}*"
+            text.append(tr["predicted_total"].format(amount=amount))
 
-    # Offer carried-over items (saved when an earlier list was ended early).
+    await message.answer(
+        "\n".join(text),
+        parse_mode="Markdown",
+        reply_markup=_list_keyboard(tr, list_id, list_url),
+    )
+
     if pending:
         await message.answer(
             tr["pending_intro"], reply_markup=_pending_keyboard(pending, list_id, tr)
         )
+
+
+@router.callback_query(F.data.startswith("draft:confirm:"))
+async def cb_confirm_draft(callback: CallbackQuery) -> None:
+    list_id = int(callback.data.split(":")[2])
+    with session_scope() as session:
+        sl = session.get(ShoppingList, list_id)
+        if sl is None or sl.status != "active":
+            await callback.answer()
+            return
+        lang = sl.user.language
+        tr = t(lang)
+        sl.is_draft = False
+        token = sl.web_token
+
+    list_url = f"{settings.web_base_url}/list/{token}"
+    if list_url.startswith("https://"):
+        open_btn = InlineKeyboardButton(text=tr["open_your_list"], web_app=WebAppInfo(url=list_url))
+    else:
+        open_btn = InlineKeyboardButton(text=tr["open_your_list"], url=list_url)
+    await callback.message.edit_text(
+        tr["draft_confirmed"],
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[open_btn]]),
+    )
+    await callback.answer()
 
 
 # --- Carried-over (pending) items ----------------------------------------------

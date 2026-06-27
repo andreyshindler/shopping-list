@@ -54,6 +54,8 @@ class ShoppingList(Base):
     web_token: Mapped[str] = mapped_column(String(32), unique=True, index=True, default=_uuid)
     predicted_total: Mapped[float] = mapped_column(Float, default=0.0)
     real_total: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # True while the user is still adding items via the bot; cleared on confirm/complete/end.
+    is_draft: Mapped[bool] = mapped_column(Boolean, default=True, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

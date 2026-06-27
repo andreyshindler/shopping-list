@@ -159,6 +159,45 @@ def _candidate_variants(
     )
 
 
+def get_active_draft(session: Session, user_id: int) -> ShoppingList | None:
+    """Return the user's most recent active draft list, or None."""
+    return session.scalar(
+        select(ShoppingList)
+        .where(
+            ShoppingList.user_id == user_id,
+            ShoppingList.status == "active",
+            ShoppingList.is_draft.is_(True),
+        )
+        .order_by(ShoppingList.created_at.desc())
+        .limit(1)
+    )
+
+
+def append_items_to_list(session: Session, shopping_list: ShoppingList, text: str) -> int:
+    """Parse text and append new items to an existing list. Returns count of items added."""
+    parsed = parse_message(text)
+    if not parsed:
+        return 0
+    user = shopping_list.user
+    max_order = max((i.sort_order for i in shopping_list.items), default=-1)
+    for offset, p in enumerate(parsed):
+        norm = normalize_name(p.name)
+        item = Item(
+            list_id=shopping_list.id,
+            raw_name=p.name,
+            normalized_name=norm,
+            category=categorize(norm),
+            quantity=p.quantity,
+            predicted_price=predicted_price(session, user.id, norm),
+            sort_order=max_order + 1 + offset,
+        )
+        enrich_item_with_global(session, user.id, item)
+        session.add(item)
+    session.flush()
+    _recalc_predicted_total(session, shopping_list)
+    return len(parsed)
+
+
 def toggle_item(session: Session, item: Item) -> Item:
     item.is_bought = not item.is_bought
     item.bought_at = datetime.now(timezone.utc) if item.is_bought else None
@@ -186,6 +225,7 @@ def end_list(session: Session, shopping_list: ShoppingList) -> list[Item]:
                     quantity=item.quantity,
                 )
             )
+    shopping_list.is_draft = False
     shopping_list.status = "ended"
     shopping_list.completed_at = datetime.now(timezone.utc)
     return missing
@@ -374,6 +414,7 @@ def complete_list(
             )
 
     shopping_list.real_total = round(real_total, 2)
+    shopping_list.is_draft = False
     shopping_list.status = "completed"
     shopping_list.completed_at = datetime.now(timezone.utc)
     return shopping_list
