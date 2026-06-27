@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
   <title>{% block title %}{{ t.shopping_list if t else 'Shopping list' }}{% endblock %}</title>
   <link rel="stylesheet" href="/static/app.css" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
   <div class="wrap">
@@ -27,6 +28,24 @@
         });
       });
     });
+
+    // When running as a Telegram Mini App, swipe down from the top closes it
+    // (instead of leaving it minimized in the background).
+    (function () {
+      var tg = window.Telegram && window.Telegram.WebApp;
+      if (!tg) return;
+      tg.ready();
+      tg.enableVerticalSwipes();
+      var startY = 0, startScroll = 0;
+      document.addEventListener("touchstart", function (e) {
+        startY = e.touches[0].clientY;
+        startScroll = window.scrollY;
+      }, { passive: true });
+      document.addEventListener("touchend", function (e) {
+        var dy = e.changedTouches[0].clientY - startY;
+        if (dy > 60 && startScroll === 0 && startY < 80) tg.close();
+      }, { passive: true });
+    })();
   </script>
   {% block scripts %}{% endblock %}
 </body>
