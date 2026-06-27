@@ -13,6 +13,7 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
+    WebAppInfo,
 )
 from sqlalchemy import extract, select
 
@@ -657,9 +658,14 @@ async def handle_list_text(message: Message) -> None:
     text.append(
         tr["price_breakdown"].format(with_price=_iso(with_price), without_price=_iso(without_price))
     )
-    open_btn = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text=tr["open_your_list"], url=f"{settings.web_base_url}/list/{token}")
-    ]])
+    list_url = f"{settings.web_base_url}/list/{token}"
+    # web_app opens instantly with no "open link?" prompt; requires HTTPS.
+    # Fall back to a plain URL button on HTTP (local dev).
+    if list_url.startswith("https://"):
+        list_btn = InlineKeyboardButton(text=tr["open_your_list"], web_app=WebAppInfo(url=list_url))
+    else:
+        list_btn = InlineKeyboardButton(text=tr["open_your_list"], url=list_url)
+    open_btn = InlineKeyboardMarkup(inline_keyboard=[[list_btn]])
     await message.answer("\n".join(text), parse_mode="Markdown", reply_markup=open_btn)
 
     # Offer carried-over items (saved when an earlier list was ended early).
