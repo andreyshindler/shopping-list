@@ -41,6 +41,15 @@
       tg.BackButton.show();
       tg.BackButton.onClick(function () { tg.close(); });
 
+      // Share button — forward the list URL via Telegram's share sheet.
+      var shareBtn = document.getElementById("share-btn");
+      if (shareBtn) {
+        shareBtn.style.display = "inline-flex";
+        shareBtn.addEventListener("click", function () {
+          tg.openTelegramLink("https://t.me/share/url?url=" + encodeURIComponent(location.href));
+        });
+      }
+
       // Swipe-down from top also closes the Mini App.
       var startY = 0, startScroll = 0;
       document.addEventListener("touchstart", function (e) {

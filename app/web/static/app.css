@@ -46,6 +46,13 @@ header.app {
 }
 header.app h1 { font-size: 1.25rem; margin: 0; }
 header.app .date { color: var(--muted); font-size: 0.85rem; }
+.share-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: none; border: 1px solid var(--line); border-radius: 20px;
+  color: var(--accent); font-size: 0.82rem; font-weight: 600;
+  padding: 4px 10px; cursor: pointer;
+}
+.share-btn svg { width: 14px; height: 14px; stroke: var(--accent); }
 
 .summary {
   background: var(--card);
