@@ -53,6 +53,11 @@ header.app .date { color: var(--muted); font-size: 0.85rem; }
   padding: 4px 10px; cursor: pointer;
 }
 .share-btn svg { width: 14px; height: 14px; stroke: var(--accent); }
+.report-cat-btn {
+  background: none; border: none; color: var(--muted);
+  font-size: 0.78rem; cursor: pointer; text-decoration: underline; padding: 4px 8px;
+}
+.report-cat-btn:disabled { opacity: 0.5; cursor: default; text-decoration: none; }
 
 .summary {
   background: var(--card);

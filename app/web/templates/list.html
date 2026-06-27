@@ -138,8 +138,31 @@
   <button type="submit" class="secondary">{{ t.finish_shopping }}</button>
 </form>
 {% endif %}
+
+{% if groups or bought %}
+<div style="text-align:center;margin-top:12px">
+  <button id="report-cat-btn" class="report-cat-btn"
+          data-url="/api/lists/{{ list.web_token }}/report-categories"
+          data-done="{{ t.report_categories_sent }}">
+    {{ t.report_categories }}
+  </button>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
 {% if list.status == "active" %}<script src="/static/app.js"></script>{% endif %}
+<script>
+(function () {
+  var btn = document.getElementById("report-cat-btn");
+  if (!btn) return;
+  btn.addEventListener("click", function () {
+    btn.disabled = true;
+    fetch(btn.dataset.url, { method: "POST" })
+      .then(function (r) { return r.json(); })
+      .then(function () { btn.textContent = btn.dataset.done; })
+      .catch(function () { btn.disabled = false; });
+  });
+})();
+</script>
 {% endblock %}

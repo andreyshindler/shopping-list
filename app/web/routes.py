@@ -9,7 +9,10 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+import requests as _requests
+
 from app.categories import CATEGORY_ORDER
+from app.config import get_settings as _get_settings
 from app.db import get_session
 from app.models import Item, ItemSuggestion, ShoppingList, User
 from app.services import (
@@ -188,6 +191,36 @@ def api_finish_list(token: str, session: Session = Depends(get_session)):
     end_list(session, sl)
     session.commit()
     return RedirectResponse(url=f"/list/{token}", status_code=303)
+
+
+@router.post("/api/lists/{token}/report-categories")
+def api_report_categories(token: str, session: Session = Depends(get_session)):
+    sl = _get_list(session, token)
+    cfg = _get_settings()
+    if not cfg.admin_telegram_id or not cfg.bot_token:
+        raise HTTPException(status_code=503, detail="Reporting not configured")
+
+    user = sl.user
+    lines = [
+        f"🐛 Category report from {user.name or user.telegram_id}",
+        f"List: {sl.created_at:%Y-%m-%d} (id {sl.id})",
+        "",
+    ]
+    by_cat: dict[str, list[str]] = {}
+    for item in sorted(sl.items, key=lambda i: i.sort_order):
+        by_cat.setdefault(item.category, []).append(item.raw_name)
+    for cat, names in by_cat.items():
+        lines.append(f"*{cat}*")
+        lines.extend(f"  • {n}" for n in names)
+        lines.append("")
+
+    text = "\n".join(lines)
+    _requests.post(
+        f"https://api.telegram.org/bot{cfg.bot_token}/sendMessage",
+        json={"chat_id": cfg.admin_telegram_id, "text": text, "parse_mode": "Markdown"},
+        timeout=10,
+    )
+    return JSONResponse({"ok": True})
 
 
 @router.get("/stats/{stats_token}", response_class=HTMLResponse)
