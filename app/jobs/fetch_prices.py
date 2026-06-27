@@ -10,12 +10,14 @@ On the VPS this is triggered by a host cron via ``docker compose run --rm price-
 from __future__ import annotations
 
 import gzip
+import io
 import sys
+from datetime import datetime, timezone
 
 import requests
 from bs4 import BeautifulSoup
 from lxml import etree
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
 from app.config import get_settings
 from app.db import session_scope
@@ -125,6 +127,86 @@ def fetch_catalog(store_id: str, max_files: int, insecure: bool = False) -> dict
     return catalog
 
 
+def _snapshot(session) -> dict[str, float]:
+    """Read current catalog as {name: price} before the replace."""
+    rows = session.execute(select(GlobalProduct.name, GlobalProduct.price)).all()
+    return {r.name: r.price for r in rows}
+
+
+def _diff(
+    old: dict[str, float], new_catalog: dict[str, float]
+) -> list[tuple[str, float, float]]:
+    """Return list of (name, old_price, new_price) for items whose price changed."""
+    changed = []
+    for name, new_price in new_catalog.items():
+        if name in old and abs(new_price - old[name]) > 0.009:
+            changed.append((name, old[name], new_price))
+    return sorted(changed, key=lambda x: abs(x[2] - x[1]) / max(x[1], 0.01), reverse=True)
+
+
+def _build_report(
+    changed: list[tuple[str, float, float]],
+    old_total: int,
+    new_total: int,
+    date_str: str,
+) -> tuple[str, str | None]:
+    """Return (telegram_caption, file_text_or_None).
+
+    file_text is None when there are no price changes (caption-only message sent instead).
+    """
+    RLM = "‏"  # Right-to-Left Mark — forces RTL in Telegram messages only
+    added = new_total - old_total  # rough; exact add/remove counts aren't tracked
+    caption_lines = [
+        f"{RLM}📊 עדכון מחירים יומי ({date_str})",
+        f"{RLM}מוצרים: {new_total:,} (היה {old_total:,})",
+        f"{RLM}מחירים שהשתנו: {len(changed)}",
+    ]
+    if added != 0:
+        caption_lines.append(f"{RLM}שינוי בקטלוג: {'+' if added > 0 else ''}{added:,}")
+    caption = "\n".join(caption_lines)
+
+    if not changed:
+        return caption, None
+
+    lines = [f"שינויי מחירים — {date_str}", "=" * 48, ""]
+    for name, old_p, new_p in changed:
+        pct = (new_p - old_p) / old_p * 100
+        sign = "+" if pct > 0 else ""
+        lines.append(name)
+        lines.append(f"שינוי: {old_p:.2f} ← {new_p:.2f}  ({sign}{pct:.1f}%)")
+        lines.append("")
+
+    return caption, "\n".join(lines)
+
+
+def _notify_admin(
+    bot_token: str, admin_id: int, caption: str, file_text: str | None, date_str: str,
+    insecure: bool = False,
+) -> None:
+    api = f"https://api.telegram.org/bot{bot_token}"
+    verify = not insecure
+    try:
+        if file_text:
+            buf = io.BytesIO(file_text.encode("utf-8"))
+            filename = f"price_changes_{date_str.replace('-', '')}.txt"
+            requests.post(
+                f"{api}/sendDocument",
+                data={"chat_id": admin_id, "caption": caption},
+                files={"document": (filename, buf, "text/plain")},
+                timeout=30,
+                verify=verify,
+            ).raise_for_status()
+        else:
+            requests.post(
+                f"{api}/sendMessage",
+                json={"chat_id": admin_id, "text": caption},
+                timeout=30,
+                verify=verify,
+            ).raise_for_status()
+    except Exception as e:
+        print(f"Failed to notify admin: {e}", file=sys.stderr)
+
+
 def refresh_global_products() -> int:
     """Replace the global_products snapshot with the latest catalog. Returns row count."""
     settings = get_settings()
@@ -138,6 +220,7 @@ def refresh_global_products() -> int:
         return 0
 
     with session_scope() as session:
+        old = _snapshot(session)
         session.execute(delete(GlobalProduct))
         session.bulk_save_objects(
             [
@@ -151,7 +234,19 @@ def refresh_global_products() -> int:
                 for name, price in catalog.items()
             ]
         )
+
     print(f"Refreshed global_products: {len(catalog):,} products.")
+
+    if settings.bot_token and settings.admin_telegram_id and old:
+        date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        changed = _diff(old, catalog)
+        caption, file_text = _build_report(changed, len(old), len(catalog), date_str)
+        print(caption)
+        _notify_admin(
+            settings.bot_token, settings.admin_telegram_id, caption, file_text, date_str,
+            insecure=settings.price_fetch_insecure,
+        )
+
     return len(catalog)
 
 
