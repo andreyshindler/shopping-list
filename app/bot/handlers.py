@@ -236,30 +236,16 @@ def _iso(text: str) -> str:
 
 
 def _render_lists(
-    lists: list[ShoppingList], currency: str, title: str, tr: dict[str, str], rtl: bool,
-    compact: bool = False,
+    lists: list[ShoppingList], currency: str, title: str, tr: dict[str, str], rtl: bool
 ) -> str:
     if not lists:
         return f"*{title}*\n\n{tr['no_lists_period']}"
-    total = 0.0
-    for sl in lists:
-        if sl.status == "completed" and sl.real_total is not None:
-            total += sl.real_total
+    total = sum(
+        sl.real_total for sl in lists
+        if sl.status == "completed" and sl.real_total is not None
+    )
     amount = f"*{_iso(f'{total:.2f} {currency}')}*"
-    if compact:
-        # Buttons show each list; text only needs the title + total.
-        lines = [f"*{title}*", "", tr["total_spent"].format(amount=amount)]
-        return "\n".join(lines)
-    lines = [f"*{title}*", ""]
-    for idx, sl in enumerate(lists, 1):
-        emoji = "✅" if sl.status == "completed" else "🟡"
-        price = _list_price(sl)
-        price_str = f"{price:.2f} {currency}" if price else "—"
-        num = _iso(f"{idx}.")
-        meta = _iso(f"{sl.created_at:%Y-%m-%d} · {price_str}")
-        lines.append(f"{num} {emoji} {meta}")
-    lines += ["", tr["total_spent"].format(amount=amount)]
-    return "\n".join(lines)
+    return "\n".join([f"*{title}*", "", tr["total_spent"].format(amount=amount)])
 
 
 def _lists_in_range(session, user_id: int, start: datetime, end: datetime) -> list[ShoppingList]:
@@ -315,10 +301,7 @@ def _lists_view(
     start, end = _month_bounds(year, month)
     lists = _lists_in_range(session, user.id, start, end)
     period = f"{month_label(lang, month)} {_iso(str(year))}"
-    text = _render_lists(
-        lists, currency, tr["lists_title"].format(period=period), tr, lang == "he",
-        compact=not manage,
-    )
+    text = _render_lists(lists, currency, tr["lists_title"].format(period=period), tr, lang == "he")
 
     rows: list[list[InlineKeyboardButton]] = []
     if manage:
