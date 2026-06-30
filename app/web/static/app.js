@@ -1,9 +1,10 @@
 // Toggle an item bought/unbought and refresh totals without a full reload.
 async function toggleItem(el) {
   const id = el.dataset.id;
+  const token = el.dataset.token;
   el.style.pointerEvents = "none";
   try {
-    const res = await fetch(`/api/items/${id}/toggle`, { method: "POST" });
+    const res = await fetch(`/api/lists/${token}/items/${id}/toggle`, { method: "POST" });
     if (!res.ok) throw new Error("toggle failed");
     const data = await res.json();
     // Easiest correct UI: reload so items re-group into the right section.
@@ -46,7 +47,7 @@ function initCompleteForm() {
 
 async function deleteItem(li) {
   try {
-    const res = await fetch(`/api/items/${li.dataset.id}/delete`, { method: "POST" });
+    const res = await fetch(`/api/lists/${li.dataset.token}/items/${li.dataset.id}/delete`, { method: "POST" });
     if (!res.ok) throw new Error("delete failed");
     window.location.reload();
   } catch {

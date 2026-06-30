@@ -45,7 +45,7 @@
           <span class="variant-cat">{{ cat_labels.get(category, category) }}</span>
           <div class="variant-options">
             {% for s in group %}
-            <form method="post" action="/api/items/{{ item.id }}/choose-variant" class="variant-form">
+            <form method="post" action="/api/lists/{{ list.web_token }}/items/{{ item.id }}/choose-variant" class="variant-form">
               <input type="hidden" name="suggestion_id" value="{{ s.id }}" />
               <button type="submit" class="variant">{{ s.name }}{% if s.price is not none %}<span class="price">{{ money(s.price) }}</span>{% endif %}</button>
             </form>
@@ -53,14 +53,14 @@
           </div>
         </div>
         {% endfor %}
-        <form method="post" action="/api/items/{{ item.id }}/custom-variant" class="variant-custom">
+        <form method="post" action="/api/lists/{{ list.web_token }}/items/{{ item.id }}/custom-variant" class="variant-custom">
           <input type="text" name="name" placeholder="{{ t.custom_variant }}" required />
           <button type="submit" class="variant add">{{ t.add }}</button>
         </form>
       </div>
     </li>
     {% else %}
-    <li class="item" data-id="{{ item.id }}">
+    <li class="item" data-id="{{ item.id }}" data-token="{{ list.web_token }}">
       <span class="check">{{ check_svg|safe }}</span>
       <span class="name">{{ item.raw_name }}{% if item.quantity != 1 %}<span class="qty">×{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }}</span>{% endif %}</span>
       {% if item.real_price is not none %}
@@ -82,7 +82,7 @@
   <h2>{{ t.bought_section }}</h2>
   <ul class="items">
     {% for item in bought %}
-    <li class="item bought" data-id="{{ item.id }}">
+    <li class="item bought" data-id="{{ item.id }}" data-token="{{ list.web_token }}">
       <span class="check">{{ check_svg|safe }}</span>
       <span class="name">{{ item.raw_name }}{% if item.quantity != 1 %}<span class="qty">×{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }}</span>{% endif %}</span>
       {% if item.real_price is not none %}

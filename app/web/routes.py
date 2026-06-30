@@ -42,6 +42,19 @@ def _get_list(session: Session, token: str) -> ShoppingList:
     return sl
 
 
+def _get_item(session: Session, token: str, item_id: int) -> Item:
+    """Fetch an item, verifying it belongs to the list named by ``token``.
+
+    The token is the access capability for the list; checking membership here
+    prevents tampering with another list's items by guessing sequential item ids.
+    """
+    sl = _get_list(session, token)
+    item = session.get(Item, item_id)
+    if item is None or item.list_id != sl.id:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return item
+
+
 def _grouped_items(shopping_list: ShoppingList) -> "OrderedDict[str, list[Item]]":
     """Group not-yet-bought items by category in display order."""
     groups: OrderedDict[str, list[Item]] = OrderedDict()
@@ -95,11 +108,9 @@ def view_list(token: str, request: Request, session: Session = Depends(get_sessi
     )
 
 
-@router.post("/api/items/{item_id}/toggle")
-def api_toggle_item(item_id: int, session: Session = Depends(get_session)):
-    item = session.get(Item, item_id)
-    if item is None:
-        raise HTTPException(status_code=404, detail="Item not found")
+@router.post("/api/lists/{token}/items/{item_id}/toggle")
+def api_toggle_item(token: str, item_id: int, session: Session = Depends(get_session)):
+    item = _get_item(session, token, item_id)
     toggle_item(session, item)
     sl = item.shopping_list   # load relationship while session is active
     totals = list_totals(sl)  # compute totals before commit
@@ -114,11 +125,9 @@ def api_toggle_item(item_id: int, session: Session = Depends(get_session)):
     )
 
 
-@router.post("/api/items/{item_id}/delete")
-def api_delete_item(item_id: int, session: Session = Depends(get_session)):
-    item = session.get(Item, item_id)
-    if item is None:
-        raise HTTPException(status_code=404, detail="Item not found")
+@router.post("/api/lists/{token}/items/{item_id}/delete")
+def api_delete_item(token: str, item_id: int, session: Session = Depends(get_session)):
+    item = _get_item(session, token, item_id)
     if item.shopping_list.status != "active":
         raise HTTPException(status_code=400, detail="List is not active")
     session.delete(item)
@@ -126,36 +135,32 @@ def api_delete_item(item_id: int, session: Session = Depends(get_session)):
     return JSONResponse({"ok": True})
 
 
-@router.post("/api/items/{item_id}/choose-variant")
+@router.post("/api/lists/{token}/items/{item_id}/choose-variant")
 def api_choose_variant(
+    token: str,
     item_id: int,
     suggestion_id: int = Form(...),
     session: Session = Depends(get_session),
 ):
     """Resolve an ambiguous item to the picked variant, then reload the list."""
-    item = session.get(Item, item_id)
-    if item is None:
-        raise HTTPException(status_code=404, detail="Item not found")
+    item = _get_item(session, token, item_id)
     suggestion = session.get(ItemSuggestion, suggestion_id)
     if suggestion is None or suggestion.item_id != item.id:
         raise HTTPException(status_code=404, detail="Suggestion not found")
-    token = item.shopping_list.web_token
     resolve_variant(session, item, suggestion)
     session.commit()
     return RedirectResponse(url=f"/list/{token}", status_code=303)
 
 
-@router.post("/api/items/{item_id}/custom-variant")
+@router.post("/api/lists/{token}/items/{item_id}/custom-variant")
 def api_custom_variant(
+    token: str,
     item_id: int,
     name: str = Form(...),
     session: Session = Depends(get_session),
 ):
     """Resolve an ambiguous item to a free-text product the user typed, then reload."""
-    item = session.get(Item, item_id)
-    if item is None:
-        raise HTTPException(status_code=404, detail="Item not found")
-    token = item.shopping_list.web_token
+    item = _get_item(session, token, item_id)
     if name.strip():
         resolve_custom_variant(session, item, name.strip())
         session.commit()
@@ -211,14 +216,16 @@ def api_report_categories(token: str, session: Session = Depends(get_session)):
     for item in sorted(sl.items, key=lambda i: i.sort_order):
         by_cat.setdefault(item.category, []).append(item.raw_name)
     for cat, names in by_cat.items():
-        lines.append(f"*{cat_labels.get(cat, cat)}*")
+        lines.append(f"{cat_labels.get(cat, cat)}:")
         lines.extend(f"  • {n}" for n in names)
         lines.append("")
 
+    # Send as plain text (no parse_mode): user-controlled item names must not be
+    # interpreted as Markdown, which could break the message or inject formatting.
     text = "\n".join(lines)
     _requests.post(
         f"https://api.telegram.org/bot{cfg.bot_token}/sendMessage",
-        json={"chat_id": cfg.admin_telegram_id, "text": text, "parse_mode": "Markdown"},
+        json={"chat_id": cfg.admin_telegram_id, "text": text},
         timeout=10,
     )
     return JSONResponse({"ok": True})
