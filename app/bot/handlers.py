@@ -170,13 +170,35 @@ async def cmd_currency(message: Message, command: CommandObject) -> None:
     await message.answer(t(lang)["currency_set"].format(code=code))
 
 
+def _latest_list(session, user_id: int) -> ShoppingList | None:
+    """The user's current list (most recent), which a report is almost always about."""
+    return (
+        session.query(ShoppingList)
+        .filter(ShoppingList.user_id == user_id)
+        .order_by(ShoppingList.created_at.desc(), ShoppingList.id.desc())
+        .first()
+    )
+
+
 @router.message(Command("report"))
 async def cmd_report(message: Message, command: CommandObject) -> None:
-    """Relay a user's bug report to the admin."""
+    """Relay a user's bug report to the admin, tied to their current list."""
     report = (command.args or "").strip()
+    list_ctx = None
     with session_scope() as session:
-        lang = _get_or_create(session, message.from_user).language
+        user = _get_or_create(session, message.from_user)
+        lang = user.language
         admin_lang = _admin_lang(session) if settings.admin_telegram_id else "he"
+        sl = _latest_list(session, user.id)
+        if sl is not None:
+            status = "✅" if sl.status == "completed" else ("📝" if sl.is_draft else "🟡")
+            list_ctx = {
+                "id": sl.id,
+                "token": sl.web_token,
+                "line": t(admin_lang)["report_list_line"].format(
+                    date=f"{sl.created_at:%d/%m/%y}", status=status, id=sl.id
+                ),
+            }
     tr = t(lang)
     if not report:
         await message.answer(tr["report_usage"], parse_mode="Markdown")
@@ -186,12 +208,30 @@ async def cmd_report(message: Message, command: CommandObject) -> None:
         return
     username = f"@{message.from_user.username}" if message.from_user.username else "—"
     name = _user_name(message.from_user) or str(message.from_user.id)
+    atr = t(admin_lang)
+    text = atr["report_to_admin"].format(
+        text=report, name=name, username=username, id=message.from_user.id
+    )
+    reply_markup = None
+    if list_ctx is not None:
+        text += list_ctx["line"]
+        reply_markup = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text=atr["report_btn_export"],
+                        callback_data=f"usr:txt:{list_ctx['id']}",
+                    ),
+                    _web_app_btn(
+                        atr["report_btn_open"],
+                        f"{settings.web_base_url}/list/{list_ctx['token']}",
+                    ),
+                ]
+            ]
+        )
     try:
         await message.bot.send_message(
-            settings.admin_telegram_id,
-            t(admin_lang)["report_to_admin"].format(
-                text=report, name=name, username=username, id=message.from_user.id
-            ),
+            settings.admin_telegram_id, text, reply_markup=reply_markup
         )
     except Exception:
         await message.answer(tr["report_unavailable"])
