@@ -54,7 +54,7 @@ def test_choose_variant_resolves_item(client):
     token, item_id, suggestion_ids = _seed_list(client)
 
     res = client.post(
-        f"/api/items/{item_id}/choose-variant",
+        f"/api/lists/{token}/items/{item_id}/choose-variant",
         data={"suggestion_id": suggestion_ids[0]},
     )
     assert res.status_code == 303
@@ -66,6 +66,30 @@ def test_choose_variant_resolves_item(client):
 
 
 def test_choose_variant_unknown_item_404(client):
-    _seed_list(client)
-    res = client.post("/api/items/9999/choose-variant", data={"suggestion_id": 1})
+    token, _item_id, _ = _seed_list(client)
+    res = client.post(
+        f"/api/lists/{token}/items/9999/choose-variant", data={"suggestion_id": 1}
+    )
     assert res.status_code == 404
+
+
+def test_item_endpoints_reject_wrong_list_token(client):
+    """An item can't be acted on via a different list's token (no IDOR)."""
+    _token_a, item_id, _ = _seed_list(client)
+    # A second, unrelated list owned by a different user.
+    with client.session_factory() as s:
+        other = get_or_create_user(s, 42, "Other", "ILS")
+        other_list = create_list_from_text(s, other, "milk")
+        s.commit()
+        token_b = other_list.web_token
+
+    # Using list B's token to touch list A's item must 404, not succeed.
+    assert client.post(f"/api/lists/{token_b}/items/{item_id}/toggle").status_code == 404
+    assert client.post(f"/api/lists/{token_b}/items/{item_id}/delete").status_code == 404
+    assert (
+        client.post(
+            f"/api/lists/{token_b}/items/{item_id}/custom-variant",
+            data={"name": "hacked"},
+        ).status_code
+        == 404
+    )
