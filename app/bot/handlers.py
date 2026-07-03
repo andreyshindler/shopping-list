@@ -9,6 +9,7 @@ from typing import Any
 from aiogram import BaseMiddleware, F, Router
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import (
+    BufferedInputFile,
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -833,6 +834,82 @@ async def cb_pend_clear(callback: CallbackQuery) -> None:
 # --- Admin: user management ----------------------------------------------------
 
 
+_ADMIN_LISTS_LIMIT = 40
+
+
+def _fmt(value: float | None) -> str:
+    return "-" if value is None else f"{value:.2f}"
+
+
+def _list_to_txt(sl: ShoppingList) -> str:
+    """Render a full debug dump of a shopping list as plain text (admin export)."""
+    u = sl.user
+    lines = [
+        "=== Shopping list export ===",
+        f"list_id       : {sl.id}",
+        f"user          : {u.display_name or ''} (telegram_id={u.telegram_id}, user_id={u.id})",
+        f"language      : {u.language}    currency: {u.currency}",
+        f"status        : {sl.status}    is_draft: {sl.is_draft}",
+        f"created_at    : {sl.created_at}",
+        f"completed_at  : {sl.completed_at}",
+        f"predicted_tot : {_fmt(sl.predicted_total)}    real_total: {_fmt(sl.real_total)}",
+        f"web_token     : {sl.web_token}",
+        f"items         : {len(sl.items)}",
+        "",
+    ]
+    header = (
+        f"{'ord':>3} {'bought':^6} {'qty':>4} {'category':<14} "
+        f"{'pred':>7} {'real':>7}  name (normalized) [flags]"
+    )
+    lines.append(header)
+    lines.append("-" * len(header))
+    for it in sorted(sl.items, key=lambda i: i.sort_order):
+        flags = []
+        if it.needs_choice:
+            flags.append("needs_choice")
+        if it.from_pending:
+            flags.append("from_pending")
+        flag_s = f" [{','.join(flags)}]" if flags else ""
+        mark = "  ✓  " if it.is_bought else "     "
+        lines.append(
+            f"{it.sort_order:>3} {mark} {it.quantity:>4g} {it.category:<14} "
+            f"{_fmt(it.predicted_price):>7} {_fmt(it.real_price):>7}  "
+            f"{it.raw_name} ({it.normalized_name}){flag_s}"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def _admin_user_lists_view(
+    session, target: User, lang: str
+) -> tuple[str, InlineKeyboardMarkup]:
+    """Admin view: a target user's recent lists, each exportable as a txt file."""
+    tr = t(lang)
+    name = target.display_name or str(target.telegram_id)
+    lists = (
+        session.query(ShoppingList)
+        .filter(ShoppingList.user_id == target.id)
+        .order_by(ShoppingList.created_at.desc())
+        .limit(_ADMIN_LISTS_LIMIT)
+        .all()
+    )
+    back = InlineKeyboardButton(text=tr["btn_back_users"], callback_data="usr:list")
+    if not lists:
+        return tr["admin_no_lists"].format(name=name), InlineKeyboardMarkup(
+            inline_keyboard=[[back]]
+        )
+    rows: list[list[InlineKeyboardButton]] = []
+    for sl in lists:
+        status = "✅" if sl.status == "completed" else ("📝" if sl.is_draft else "🟡")
+        price = _list_price(sl)
+        suffix = f" · {price:.0f} {target.currency}" if price else ""
+        label = f"📄 {sl.created_at:%d/%m/%y} {status}{suffix}"
+        rows.append([InlineKeyboardButton(text=label, callback_data=f"usr:txt:{sl.id}")])
+    rows.append([back])
+    return tr["admin_user_lists_title"].format(name=name), InlineKeyboardMarkup(
+        inline_keyboard=rows
+    )
+
+
 def _users_view(session, lang: str) -> tuple[str, InlineKeyboardMarkup | None]:
     """Build the registered-users list with a delete button per non-admin user."""
     tr = t(lang)
@@ -846,10 +923,12 @@ def _users_view(session, lang: str) -> tuple[str, InlineKeyboardMarkup | None]:
         name = u.display_name or str(u.telegram_id)
         marker = "👑" if is_admin_user else "👤"
         lines.append(f"{marker} {name} · {_iso(str(u.telegram_id))}")
+        row = [
+            InlineKeyboardButton(text=f"📋 {name}", callback_data=f"usr:lists:{u.id}")
+        ]
         if not is_admin_user:
-            buttons.append(
-                [InlineKeyboardButton(text=f"🗑 {name}", callback_data=f"usr:del:{u.id}")]
-            )
+            row.append(InlineKeyboardButton(text="🗑", callback_data=f"usr:del:{u.id}"))
+        buttons.append(row)
     kb = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
     return "\n".join(lines), kb
 
@@ -928,6 +1007,46 @@ async def cb_usr_list(callback: CallbackQuery) -> None:
     except Exception:
         pass
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("usr:lists:"))
+async def cb_usr_lists(callback: CallbackQuery) -> None:
+    if not _is_admin(callback.from_user.id):
+        await callback.answer(t(None)["not_allowed"], show_alert=True)
+        return
+    uid = int(callback.data.split(":")[2])
+    with session_scope() as session:
+        lang = _get_or_create(session, callback.from_user).language
+        target = session.get(User, uid)
+        if target is None:
+            await callback.answer(t(lang)["user_not_found"], show_alert=True)
+            return
+        text, kb = _admin_user_lists_view(session, target, lang)
+    try:
+        await callback.message.edit_text(text, reply_markup=kb)
+    except Exception:
+        pass
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("usr:txt:"))
+async def cb_usr_txt(callback: CallbackQuery) -> None:
+    if not _is_admin(callback.from_user.id):
+        await callback.answer(t(None)["not_allowed"], show_alert=True)
+        return
+    list_id = int(callback.data.split(":")[2])
+    with session_scope() as session:
+        lang = _get_or_create(session, callback.from_user).language
+        sl = session.get(ShoppingList, list_id)
+        if sl is None:
+            await callback.answer(t(lang)["list_not_found"], show_alert=True)
+            return
+        content = _list_to_txt(sl)
+        filename = f"list_{sl.id}_{sl.created_at:%Y%m%d}.txt"
+    await callback.message.answer_document(
+        BufferedInputFile(content.encode("utf-8"), filename=filename)
+    )
+    await callback.answer(t(lang)["list_exported"])
 
 
 # --- Approval / access control -------------------------------------------------
