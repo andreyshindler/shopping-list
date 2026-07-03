@@ -59,6 +59,7 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
         "יוגורט יווני", "יוגורט טבעי", "יוגורט פירות", "שמנת", "שמנת חמוצה", "שמנת מתוקה",
         "שמנת בישול", "שמנת מוקצפת", "חמאה", "ביצה", "ביצים", "קפיר", "ריקוטה",
         "מסקרפונה", "פטה", "אשל", "גבינת", "מילקי",
+        "שוקו", "לבן", "ריוויון", "מוקצף",
     ],
     "Meat & Fish": [
         "chicken", "chicken breast", "ground chicken", "ground beef", "beef",
@@ -110,7 +111,7 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
         "שמן קנולה", "רסק עגבניות", "עגבניות מרוסקות", "שעועית", "שעועית משומרת", "חומוס",
         "חומוס משומר", "עדשים", "עדשים אדומות", "טונה בשמן", "טונה במים", "סוכר",
         "סוכר חום", "מלח", "פלפל שחור", "פלפל לבן", "כמון", "פפריקה", "כורכום", "קינמון", "ויניגר",
-        "חומץ", "רוטב", "רוטב סויה", "קטשופ", "חרדל", "מיונז", "טחינה", "ריבה", "דבש",
+        "חומץ", "רוטב", "רוטב סויה", "קטשופ", "חרדל", "מיונז", "טחינה", "ריבה", "ממרח", "דבש",
         "פיקלס", "זיתים", "קפה", "קפה טחון", "קפה נמס", "תה", "תה שחור", "תה צמחים",
         "קקאו", "שמרים", "אבקת אפייה", "וניל", "שוקולד אפייה", "גרנולה", "קוורקר",
         "קורנפלקס", "סירופ מייפל", "חמאת בוטנים", "חמאת שקדים", "קוסקוס", "פתיתים",
@@ -126,7 +127,7 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
         "frozen burritos", "burrito",
         # Hebrew
         "קפוא", "קפואה", "קפואים", "פיצה קפואה", "פיצה", "ירקות מעורבים", "תירס קפוא",
-        "אפונה", "אפונה קפואה", "שעועית ירוקה קפואה", "ברוקולי קפוא", "גלידה", "גלידת וניל",
+        "אפונה", "אפונה קפואה", "שעועית ירוקה קפואה", "ברוקולי קפוא", "גלידה", "גלידת", "גלידת וניל",
         "גלידת שוקולד", "ארטיק", "שניצלון", "פינגר", "כדורי עוף", "כדורי בשר", "בורגר קפוא",
         "דג קפוא", "שרימפס קפוא", "פילו קפוא", "בצק עלים", "מרק קפוא", "אדמאמה", "קרפ קפוא",
         "וופל קפוא", "צ'יפס קפוא", "בוריטו קפוא",
@@ -142,7 +143,7 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
         # Hebrew
         "מיץ", "מיץ תפוזים", "מיץ ענבים", "מיץ תפוחים", "מיץ אשכוליות", "מיץ אפרסק", "קולה",
         "קולה זירו", "ספרייט", "פנטה", "ג'ינג'ר אייל", "רד בול", "מים", "מים מינרלים",
-        "מים מוגזים", "שייק", "שייק תות", "שוקו", "תה קר", "קפה קר", "לימונדה", "מי קוקוס",
+        "מים מוגזים", "שייק", "שייק תות", "תה קר", "קפה קר", "לימונדה", "מי קוקוס",
         "טוניק", "בירה", "יין", "יין אדום", "יין לבן", "יין רוזה", "קומבוצ'ה", "סודה",
         "משקה", "משקאות",
     ],
@@ -255,6 +256,11 @@ def categorize(normalized_name: str) -> str:
     wins for compounds like "orange juice" (juice -> Beverages, not orange -> Produce).
     English keywords also match by prefix ("tomatoes" -> "tomato"); non-ASCII (Hebrew)
     keywords match whole words only, to avoid false hits like "דגנים" (cereal) -> "דג".
+
+    Hebrew compounds are head-first ("יוגורט תות" = yogurt+strawberry), so an extra
+    first-word pass runs before the right-to-left scan: if the first Hebrew word maps
+    to a non-Produce/non-Other category it wins immediately, preventing flavour words
+    like "תות" from overriding the head noun "יוגורט".
     """
     name = _strip_marks(normalized_name)
 
@@ -263,6 +269,15 @@ def categorize(normalized_name: str) -> str:
             return category
 
     words = _WORD_RE.findall(name)
+
+    # Hebrew head-noun pass: check first word when it is non-ASCII (Hebrew).
+    if words and not words[0].isascii():
+        for keyword, category in _WORD_KEYWORDS:
+            if words[0] == keyword:
+                if category not in ("Produce", "Other"):
+                    return category
+                break  # weak match on first word; fall through to right-to-left
+
     for word in reversed(words):
         for keyword, category in _WORD_KEYWORDS:
             if word == keyword or (keyword.isascii() and word.startswith(keyword)):
