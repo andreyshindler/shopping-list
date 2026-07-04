@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.categories import categorize
+from app.categories import categorize, is_weighed
 from app.global_prices import (
     find_variants,
     global_estimate,
@@ -90,7 +90,7 @@ def enrich_item_with_global(session: Session, user_id: int, item: Item) -> float
     """
     variants = find_variants(session, item.raw_name)
     if item.predicted_price is None and variants:  # no history -> fall back to catalog
-        item.predicted_price = global_estimate(variants)
+        item.predicted_price = global_estimate(variants, weighed=is_weighed(item.category))
     candidates = _candidate_variants(session, user_id, item.normalized_name, variants)
     # Offer the picker for generic catalog terms, or whenever the user has prior picks
     # (including their own free-text additions) remembered for this term.

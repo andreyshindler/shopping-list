@@ -85,12 +85,31 @@ def find_variants(session: Session, query: str) -> list[GlobalProduct]:
     return list(representatives.values())
 
 
-def global_estimate(variants: list[GlobalProduct]) -> float | None:
-    """A rough expected price for an unresolved item: the median of the variants."""
-    prices = [v.price for v in variants if v.price is not None]
+def _percentile(sorted_values: list[float], q: float) -> float:
+    """Linear-interpolation percentile of an already-sorted, non-empty list (0<=q<=1)."""
+    if len(sorted_values) == 1:
+        return sorted_values[0]
+    pos = q * (len(sorted_values) - 1)
+    lo = int(pos)
+    frac = pos - lo
+    if lo + 1 < len(sorted_values):
+        return sorted_values[lo] + (sorted_values[lo + 1] - sorted_values[lo]) * frac
+    return sorted_values[lo]
+
+
+def global_estimate(variants: list[GlobalProduct], weighed: bool = False) -> float | None:
+    """A rough expected price for an unresolved item.
+
+    For weighed items (produce, meat, fish) the catalog match also pulls in pricier
+    processed/packaged variants (e.g. pickled cucumbers under "מלפפון"), which inflate
+    the median. Fresh loose produce is the cheapest matching variant, so use a low
+    percentile (25th) there; everything else uses the median.
+    """
+    prices = sorted(v.price for v in variants if v.price is not None)
     if not prices:
         return None
-    return round(median(prices), 2)
+    value = _percentile(prices, 0.25) if weighed else median(prices)
+    return round(value, 2)
 
 
 def is_ambiguous(query: str, variants: list[GlobalProduct]) -> bool:
