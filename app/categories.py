@@ -21,6 +21,16 @@ CATEGORY_ORDER: list[str] = [
     "Other",
 ]
 
+# Categories priced by weight: quantity means kilograms and the learned/predicted
+# price is per-kg (vegetables, fruit, meat, fish). Everything else is per-unit.
+WEIGHED_CATEGORIES: set[str] = {"Produce", "Meat & Fish"}
+
+
+def is_weighed(category: str) -> bool:
+    """True where quantity is kilograms (produce, meat & fish)."""
+    return category in WEIGHED_CATEGORIES
+
+
 # Category -> keywords. Matching is substring-based on the normalized name, so plurals
 # and minor variations ("tomatoes", "tomato") are covered by the singular keyword.
 # Multi-word entries (with a space or hyphen) are matched as whole phrases first.

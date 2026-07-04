@@ -60,6 +60,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "yearly_spending": "Yearly spending",
         "most_bought": "Most bought items",
         "no_trips": "No completed trips yet.",
+        "unit_kg": "kg",
     },
     "he": {
         "shopping_list": "רשימת קניות",
@@ -93,6 +94,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "yearly_spending": "הוצאות שנתיות",
         "most_bought": "הפריטים הנפוצים ביותר",
         "no_trips": "אין עדיין קניות שהושלמו.",
+        "unit_kg": "ק\"ג",
     },
 }
 
