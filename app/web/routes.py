@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 import requests as _requests
 
-from app.categories import CATEGORY_ORDER
+from app.categories import CATEGORY_ORDER, WEIGHED_CATEGORIES
 from app.config import get_settings as _get_settings
 from app.db import get_session
 from app.models import Item, ItemSuggestion, ShoppingList, User
@@ -103,6 +103,7 @@ def view_list(token: str, request: Request, session: Session = Depends(get_sessi
             "groups": _grouped_items(sl),
             "bought": bought,
             "totals": list_totals(sl),
+            "weighed": WEIGHED_CATEGORIES,
             **i18n_context(sl.user.language, sl.web_token, "list"),
         },
     )

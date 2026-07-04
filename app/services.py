@@ -404,11 +404,15 @@ def complete_list(
         price = item_prices.get(item.id)
         if price is not None:
             item.real_price = price
+            # Learn the price PER UNIT (per kg for weighed items): the user enters the
+            # line total they paid, so divide by quantity. Multiplying by quantity next
+            # time then reproduces the line total instead of squaring the quantity.
+            qty = item.quantity or 1.0
             session.add(
                 PriceHistory(
                     user_id=shopping_list.user_id,
                     normalized_name=item.normalized_name,
-                    price=price,
+                    price=round(price / qty, 2),
                     currency=currency,
                 )
             )
