@@ -93,10 +93,13 @@ persisted on `User.language` and shared between bot and web.
 
 ## Deployment
 
-Pushing to `main` triggers [.github/workflows/deploy.yml](.github/workflows/deploy.yml),
-which SSHes to the VPS, runs `git reset --hard origin/main` and `docker compose up -d --build`,
-then pings the admin on Telegram. **A merge to `main` auto-deploys** — there is no separate
-release step. The `price-fetch` job is driven by a host cron, not the compose stack; see
+Deployment is **pull-based**: a host cron on the VPS runs
+[scripts/auto_deploy.sh](scripts/auto_deploy.sh) every minute, which checks
+`origin/main` and, when it moves, runs `git reset --hard origin/main` +
+`docker compose up -d --build` and pings the admin on Telegram. **A merge to `main`
+auto-deploys** (within ~1 min) — there is no separate release step and GitHub does
+**not** SSH into the VPS. See [docs/auto-deploy-cron.md](docs/auto-deploy-cron.md).
+The `price-fetch` job is a separate host cron, not the compose stack; see
 [docs/price-fetch-cron.md](docs/price-fetch-cron.md).
 
 ## Git conventions
