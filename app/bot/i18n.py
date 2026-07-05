@@ -55,6 +55,18 @@ BOT_TEXT: dict[str, dict[str, str]] = {
             "`/report הכפתור לא עובד`"
         ),
         "report_sent": "תודה! הדיווח נשלח למנהל. ✅",
+        "bot_description": (
+            "🛒 בוט רשימות קניות\n\n"
+            "שלחו רשימת קניות — מוצר בכל שורה — ואסדר אותה לפי קטגוריות ואשלח לכם "
+            "קישור לרשימה. באתר מסמנים מה שנקנה, רואים מחיר צפוי וסכום כולל, "
+            "ובסיום מזינים כמה שילמתם בפועל. הכול נשמר לסטטיסטיקת הוצאות חודשית "
+            "ושנתית, והמחירים נלמדים מהקניות שלכם.\n\n"
+            "לחצו ״התחל״ כדי להתחיל 👇"
+        ),
+        "bot_short_description": (
+            "רשימות קניות בטלגרם: סידור לפי קטגוריות, מחירים צפויים "
+            "וסטטיסטיקת הוצאות."
+        ),
         "report_unavailable": "דיווח אינו זמין כרגע.",
         "report_to_admin": "🐞 דיווח תקלה חדש:\n{text}\n\nמאת: {name}\nשם משתמש: {username}\nמזהה: {id}",
         "report_list_line": "\n\n📋 רשימה: {date} · {status} · #{id}",
@@ -153,6 +165,19 @@ BOT_TEXT: dict[str, dict[str, str]] = {
             "description.\nE.g.:\n`/report the toggle button doesn't work`"
         ),
         "report_sent": "Thanks! Your report was sent to the admin. ✅",
+        "bot_description": (
+            "🛒 Shopping List Bot\n\n"
+            "Send a shopping list — one item per line — and I'll sort it by category "
+            "and give you a web link. On the page you tick off what you bought, see "
+            "predicted prices and a running total, then enter what you actually paid. "
+            "Everything feeds monthly & yearly spending stats, and prices are learned "
+            "from your own purchases.\n\n"
+            "Tap Start to begin 👇"
+        ),
+        "bot_short_description": (
+            "Telegram shopping lists: auto-categorized, predicted prices, and "
+            "spending stats."
+        ),
         "report_unavailable": "Reporting isn't available right now.",
         "report_to_admin": "🐞 New bug report:\n{text}\n\nfrom: {name}\nusername: {username}\nid: {id}",
         "report_list_line": "\n\n📋 List: {date} · {status} · #{id}",
