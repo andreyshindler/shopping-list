@@ -22,6 +22,17 @@ _TOKEN_RE = re.compile(r"[^\W\d_]+", re.UNICODE)
 # Most variant choices to surface for one item (across all categories).
 _MAX_VARIANTS = 18
 
+# Terms the user buys by the unit, never by weight. The Shufersal catalog marks
+# per-kilo SKUs with a "(ק)" tag (stored either as "(ק)" or mirrored ")ק(" ), which
+# makes them look deceptively cheap and skews both the picker and the price estimate.
+NON_KILO_TERMS = ("חסה", "כוסברה", "עגבניות שרי")
+_NON_KILO_NORMALIZED = {normalize_name(t) for t in NON_KILO_TERMS}
+_KILO_SKU_RE = re.compile(r"[()]\s*ק\s*[()]")
+
+
+def _is_kilo_sku(name: str) -> bool:
+    return bool(_KILO_SKU_RE.search(name))
+
 
 def _tokens(text: str) -> list[str]:
     return _TOKEN_RE.findall(text.lower())
@@ -65,6 +76,7 @@ def find_variants(session: Session, query: str) -> list[GlobalProduct]:
     if not tokens:
         return []
     query_tokens = set(tokens)
+    drop_kilo = normalize_name(query) in _NON_KILO_NORMALIZED
 
     stmt = select(GlobalProduct)
     for tok in tokens:
@@ -76,6 +88,8 @@ def find_variants(session: Session, query: str) -> list[GlobalProduct]:
         # Whole-word match: a query token must be a complete word in the name, not a
         # prefix of a longer one (שוקו should not bring back שוקולד).
         if not query_tokens.issubset(_tokens(product.name)):
+            continue
+        if drop_kilo and _is_kilo_sku(product.name):
             continue
         key = _variant_key(product.name)
         if key not in representatives:  # first seen is cheapest (ordered by price)

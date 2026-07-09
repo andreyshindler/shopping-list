@@ -17,6 +17,7 @@ CATEGORY_LABELS: dict[str, dict[str, str]] = {
         "Bakery": "מאפים",
         "Pantry": "מזווה",
         "Frozen": "קפואים",
+        "Chilled": "מצוננים",
         "Beverages": "משקאות",
         "Snacks": "חטיפים",
         "Household": "מוצרי בית",

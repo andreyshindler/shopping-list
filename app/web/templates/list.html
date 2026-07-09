@@ -29,6 +29,13 @@
   <span style="width: {{ (100 * totals.bought_count / totals.total_count) if totals.total_count else 0 }}%"></span>
 </div>
 
+{% if list.status == "completed" %}
+<div class="complete-card">
+  <h2>{{ t.completed }}</h2>
+  <p>{{ t.real_total_spent }}: <strong>{{ money(list.real_total or 0) }}</strong></p>
+</div>
+{% endif %}
+
 {% if list.status == "active" and groups %}<p class="swipe-hint">{{ t.swipe_hint }}</p>{% endif %}
 {% for category, members in groups.items() %}
 <section class="category">
@@ -36,7 +43,7 @@
   <ul class="items">
     {% for item in members %}
     {% if item.needs_choice and list.status == "active" %}
-    <li class="item needs-choice">
+    <li class="item needs-choice" data-item-id="{{ item.id }}">
       <span class="name">{{ item.raw_name }}{% if item.category in weighed %}<span class="qty">{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }} {{ t.unit_kg }}</span>{% elif item.quantity != 1 %}<span class="qty">×{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }}</span>{% endif %}</span>
       <div class="variants">
         <span class="variants-hint">{{ t.pick_variant }}</span>
@@ -105,12 +112,7 @@
   <h2>{{ t.list_ended }}</h2>
   {% if groups %}<p>{{ t.missing_saved }}</p>{% endif %}
 </div>
-{% elif list.status == "completed" %}
-<div class="complete-card">
-  <h2>{{ t.completed }}</h2>
-  <p>{{ t.real_total_spent }}: <strong>{{ money(list.real_total or 0) }}</strong></p>
-</div>
-{% elif totals.total_count and totals.bought_count == totals.total_count %}
+{% elif list.status == "active" and totals.total_count and totals.bought_count == totals.total_count %}
 <div class="complete-card">
   <h2>{{ t.all_done }}</h2>
   <p>{{ t.enter_paid }}</p>

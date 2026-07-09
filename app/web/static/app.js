@@ -97,6 +97,31 @@ function initSwipeDelete() {
   });
 }
 
+// Picking a variant POSTs and redirects, which would land the user back at the top of
+// the page. Remember which item was resolved and scroll back to it after the reload,
+// so they can carry on from where they were.
+const FOCUS_KEY = "focusItemId";
+
+function initVariantScroll() {
+  document.querySelectorAll("li.needs-choice[data-item-id]").forEach((li) => {
+    li.querySelectorAll("form").forEach((form) => {
+      form.addEventListener("submit", () => {
+        sessionStorage.setItem(FOCUS_KEY, li.dataset.itemId);
+      });
+    });
+  });
+}
+
+function restoreFocusItem() {
+  const id = sessionStorage.getItem(FOCUS_KEY);
+  if (!id) return;
+  sessionStorage.removeItem(FOCUS_KEY);
+  const el = document.querySelector(
+    `li.item[data-id="${id}"], li.needs-choice[data-item-id="${id}"]`
+  );
+  if (el) el.scrollIntoView({ block: "center" });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll("li.item[data-id]").forEach((el) => {
     el.addEventListener("click", () => {
@@ -106,4 +131,6 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   initCompleteForm();
   initSwipeDelete();
+  initVariantScroll();
+  restoreFocusItem();
 });

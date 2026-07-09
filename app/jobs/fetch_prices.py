@@ -173,7 +173,7 @@ def _build_report(
         pct = (new_p - old_p) / old_p * 100
         sign = "+" if pct > 0 else ""
         lines.append(name)
-        lines.append(f"שינוי: {old_p:.2f} ← {new_p:.2f}  ({sign}{pct:.1f}%)")
+        lines.append(f"  {old_p:.2f} → {new_p:.2f}  ({sign}{pct:.1f}%)")
         lines.append("")
 
     return caption, "\n".join(lines)

@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.categories import categorize, is_weighed
+from app.categories import DUAL_CATEGORY_TERMS, categorize, is_weighed
 from app.global_prices import (
     find_variants,
     global_estimate,
@@ -27,6 +27,11 @@ from app.models import (
 )
 from app.parsing import parse_message
 from app.pricing import normalize_name, predicted_price
+
+# Catalog variants offered in the web picker. Kept small on purpose: the picker also
+# always shows a free-text "custom product" field, so 3 + custom is enough choice.
+# ``find_variants`` still scans a wider set, so the median price estimate is unaffected.
+MAX_SUGGESTIONS = 3
 
 
 def get_or_create_user(
@@ -88,6 +93,22 @@ def enrich_item_with_global(session: Session, user_id: int, item: Item) -> float
     catalog price is only used as a fallback. Shared by fresh list creation and
     carry-over. Returns the item's resulting predicted price (folded into the total).
     """
+    # Terms that belong to two categories: offer the categories themselves as the
+    # choice, since no catalog variant can disambiguate them.
+    dual = DUAL_CATEGORY_TERMS.get(item.normalized_name)
+    if dual:
+        item.needs_choice = True
+        for category in dual:
+            item.suggestions.append(
+                ItemSuggestion(
+                    name=item.raw_name,
+                    normalized_name=item.normalized_name,
+                    category=category,
+                    price=item.predicted_price,
+                )
+            )
+        return item.predicted_price
+
     variants = find_variants(session, item.raw_name)
     if item.predicted_price is None and variants:  # no history -> fall back to catalog
         item.predicted_price = global_estimate(variants, weighed=is_weighed(item.category))
@@ -97,7 +118,7 @@ def enrich_item_with_global(session: Session, user_id: int, item: Item) -> float
     has_prior_pick = any(c.rank > 0 for c in candidates)
     if candidates and (is_ambiguous(item.raw_name, variants) or has_prior_pick):
         item.needs_choice = True
-        for c in candidates:
+        for c in candidates[:MAX_SUGGESTIONS]:
             item.suggestions.append(
                 ItemSuggestion(
                     name=c.name,
@@ -271,7 +292,9 @@ def resolve_variant(
 
     item.raw_name = suggestion.name
     item.normalized_name = suggestion.normalized_name
-    item.category = categorize(suggestion.normalized_name)
+    # Trust the suggestion's category: for dual-category terms it *is* the user's pick,
+    # and for catalog variants it is the grouping they saw in the picker.
+    item.category = suggestion.category or categorize(suggestion.normalized_name)
     # Prefer the user's own paid history for this exact product over the suggestion's
     # catalog price, so a product they've bought before keeps its real price.
     hist = predicted_price(session, shopping_list.user_id, suggestion.normalized_name)

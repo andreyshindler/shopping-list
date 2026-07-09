@@ -12,6 +12,7 @@ CATEGORY_ORDER: list[str] = [
     "Bakery",
     "Pantry",
     "Frozen",
+    "Chilled",
     "Beverages",
     "Snacks",
     "Household",
@@ -30,6 +31,13 @@ def is_weighed(category: str) -> bool:
     """True where quantity is kilograms (produce, meat & fish)."""
     return category in WEIGHED_CATEGORIES
 
+
+# Terms that legitimately belong to more than one category. Instead of guessing, the
+# item is flagged ``needs_choice`` and the user picks the category in the web picker.
+# Keys are normalized item names (see ``pricing.normalize_name``).
+DUAL_CATEGORY_TERMS: dict[str, list[str]] = {
+    "סקוויזי": ["Dairy & Eggs", "Pantry"],
+}
 
 # Category -> keywords. Matching is substring-based on the normalized name, so plurals
 # and minor variations ("tomatoes", "tomato") are covered by the singular keyword.
@@ -54,7 +62,7 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
         "פטריות", "סלרי", "תירס", "אגס", "אגסים", "אפרסק", "שזיף", "דובדבן", "דובדבנים",
         "פטרוזיליה", "כוסברה", "שמיר", "ג'ינג'ר", "סלט", "ירקות", "פירות", "חציל",
         "קישוא", "קישואים", "סלק", "צנון", "צנונית", "כרישה", "קלמנטינה", "פומלית", "קיווי",
-        "אננס", "ארטישוק", "תמר", "קולורבי",
+        "אננס", "ארטישוק", "תמר", "קולורבי", "עירית", "עירת",
     ],
     "Dairy & Eggs": [
         "milk", "whole milk", "skim milk", "lactose-free milk", "oat milk", "almond milk",
@@ -70,6 +78,7 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
         "שמנת בישול", "שמנת מוקצפת", "חמאה", "ביצה", "ביצים", "קפיר", "ריקוטה",
         "מסקרפונה", "פטה", "אשל", "גבינת", "מילקי",
         "שוקו", "ריוויון", "מוקצף",
+        "קוטז", "צפתית", "סיזיקי", "צזיקי",
     ],
     "Meat & Fish": [
         "chicken", "chicken breast", "ground chicken", "ground beef", "beef",
@@ -141,6 +150,12 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
         "גלידת שוקולד", "ארטיק", "שניצלון", "פינגר", "כדורי עוף", "כדורי בשר", "בורגר קפוא",
         "דג קפוא", "שרימפס קפוא", "פילו קפוא", "בצק עלים", "מרק קפוא", "אדמאמה", "קרפ קפוא",
         "וופל קפוא", "צ'יפס קפוא", "בוריטו קפוא",
+        "מלוואח", "מלאווח", "ג'חנון", "גחנון",
+    ],
+    "Chilled": [
+        "hummus salad", "tahini salad",
+        # Hebrew — refrigerated deli salads
+        "סלט חומוס", "סלט טחינה",
     ],
     "Beverages": [
         "orange juice", "fresh orange juice", "juice", "grape juice", "apple juice",
