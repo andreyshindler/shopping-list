@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from aiogram import BaseMiddleware, F, Router
@@ -710,19 +710,40 @@ async def _thumbs_up(message: Message) -> None:
         pass  # reactions can be unavailable (old message, chat settings)
 
 
-@router.message(F.text & ~F.text.startswith("/"))
-async def handle_list_text(message: Message) -> None:
+# An open draft older than this is probably from an earlier shopping trip, so ask
+# instead of silently appending to it.
+DRAFT_PROMPT_AGE = timedelta(hours=2)
+
+
+def _draft_choice_keyboard(tr: dict, list_url: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text=tr["btn_use_existing"], callback_data="dr:add"),
+                InlineKeyboardButton(text=tr["btn_create_new"], callback_data="dr:new"),
+            ],
+            [_web_app_btn(tr["open_your_list"], list_url)],
+        ]
+    )
+
+
+async def _apply_items(target: Message, tg_user, source_text: str, force_new: bool) -> None:
+    """Append ``source_text`` to the user's open draft (or start a new list) and reply.
+
+    ``target`` is only used to send messages, so this works both from the user's own
+    message and from the bot's prompt when answering a callback.
+    """
     with session_scope() as session:
-        user = _get_or_create(session, message.from_user)
+        user = _get_or_create(session, tg_user)
         lang, currency = user.language, user.currency
         tr = t(lang)
 
-        draft = get_active_draft(session, user.id)
+        draft = None if force_new else get_active_draft(session, user.id)
         if draft:
             existing_count = len(draft.items)
-            added = append_items_to_list(session, draft, message.text)
+            added = append_items_to_list(session, draft, source_text)
             if added == 0:
-                await message.answer(tr["no_items_found"])
+                await target.answer(tr["no_items_found"])
                 return
             total_count = existing_count + added
             predicted = draft.predicted_total
@@ -731,9 +752,9 @@ async def handle_list_text(message: Message) -> None:
             pending = []
             is_new = False
         else:
-            shopping_list = create_list_from_text(session, user, message.text)
+            shopping_list = create_list_from_text(session, user, source_text)
             if shopping_list is None:
-                await message.answer(tr["no_items_found"])
+                await target.answer(tr["no_items_found"])
                 return
             added = len(shopping_list.items)
             total_count = added
@@ -745,7 +766,6 @@ async def handle_list_text(message: Message) -> None:
             pending = _pending_rows(session, user.id)
             is_new = True
 
-    await _thumbs_up(message)
     list_url = f"{settings.web_base_url}/list/{token}"
     if is_new:
         text = [tr["added"].format(count=added)]
@@ -761,16 +781,54 @@ async def handle_list_text(message: Message) -> None:
             amount = f"*{_iso(f'{predicted:.2f} {currency}')}*"
             text.append(tr["predicted_total"].format(amount=amount))
 
-    await message.answer(
+    await target.answer(
         "\n".join(text),
         parse_mode="Markdown",
         reply_markup=_list_keyboard(tr, list_id, list_url),
     )
 
     if pending:
-        await message.answer(
+        await target.answer(
             tr["pending_intro"], reply_markup=_pending_keyboard(pending, list_id, tr)
         )
+
+
+@router.message(F.text & ~F.text.startswith("/"))
+async def handle_list_text(message: Message) -> None:
+    with session_scope() as session:
+        user = _get_or_create(session, message.from_user)
+        tr = t(user.language)
+        draft = get_active_draft(session, user.id)
+        stale = bool(draft) and datetime.now(timezone.utc) - draft.created_at > DRAFT_PROMPT_AGE
+        draft_url = f"{settings.web_base_url}/list/{draft.web_token}" if draft else ""
+
+    if stale:
+        # Reply, so the callback can recover the items from reply_to_message: the text
+        # is far too long for the 64-byte callback_data budget.
+        await message.reply(tr["draft_exists"], reply_markup=_draft_choice_keyboard(tr, draft_url))
+        return
+
+    await _thumbs_up(message)
+    await _apply_items(message, message.from_user, message.text, force_new=False)
+
+
+@router.callback_query(F.data.startswith("dr:"))
+async def cb_draft_choice(callback: CallbackQuery) -> None:
+    """Answer the "open list exists" prompt: append to the draft, or start a new list."""
+    force_new = callback.data.split(":")[1] == "new"
+    original = callback.message.reply_to_message
+    with session_scope() as session:
+        tr = t(_get_or_create(session, callback.from_user).language)
+    if original is None or not original.text:
+        await callback.answer(tr["draft_choice_expired"], show_alert=True)
+        return
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await callback.answer()
+    await _thumbs_up(original)
+    await _apply_items(callback.message, callback.from_user, original.text, force_new=force_new)
 
 
 @router.callback_query(F.data.startswith("draft:confirm:"))
