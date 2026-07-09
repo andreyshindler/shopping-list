@@ -43,7 +43,7 @@
   <ul class="items">
     {% for item in members %}
     {% if item.needs_choice and list.status == "active" %}
-    <li class="item needs-choice" data-item-id="{{ item.id }}">
+    <li class="item needs-choice" id="item-{{ item.id }}" data-item-id="{{ item.id }}">
       <span class="name">{{ item.raw_name }}{% if item.weighed %}<span class="qty">{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }} {{ t.unit_kg }}</span>{% elif item.quantity != 1 %}<span class="qty">×{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }}</span>{% endif %}</span>
       <div class="variants">
         <span class="variants-hint">{{ t.pick_variant }}</span>
@@ -67,7 +67,7 @@
       </div>
     </li>
     {% else %}
-    <li class="item" data-id="{{ item.id }}" data-token="{{ list.web_token }}">
+    <li class="item" id="item-{{ item.id }}" data-id="{{ item.id }}" data-token="{{ list.web_token }}">
       <span class="check">{{ check_svg|safe }}</span>
       <span class="name">{{ item.raw_name }}{% if item.weighed %}<span class="qty">{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }} {{ t.unit_kg }}</span>{% elif item.quantity != 1 %}<span class="qty">×{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }}</span>{% endif %}</span>
       {% if item.real_price is not none %}
@@ -89,7 +89,7 @@
   <h2>{{ t.bought_section }}</h2>
   <ul class="items">
     {% for item in bought %}
-    <li class="item bought" data-id="{{ item.id }}" data-token="{{ list.web_token }}">
+    <li class="item bought" id="item-{{ item.id }}" data-id="{{ item.id }}" data-token="{{ list.web_token }}">
       <span class="check">{{ check_svg|safe }}</span>
       <span class="name">{{ item.raw_name }}{% if item.weighed %}<span class="qty">{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }} {{ t.unit_kg }}</span>{% elif item.quantity != 1 %}<span class="qty">×{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }}</span>{% endif %}</span>
       {% if item.real_price is not none %}

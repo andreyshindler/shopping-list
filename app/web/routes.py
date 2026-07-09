@@ -149,7 +149,9 @@ def api_choose_variant(
         raise HTTPException(status_code=404, detail="Suggestion not found")
     resolve_variant(session, item, suggestion)
     session.commit()
-    return RedirectResponse(url=f"/list/{token}", status_code=303)
+    # Anchor on the resolved item so the browser lands where the user was, instead of
+    # at the top of the list.
+    return RedirectResponse(url=f"/list/{token}#item-{item_id}", status_code=303)
 
 
 @router.post("/api/lists/{token}/items/{item_id}/custom-variant")
@@ -164,7 +166,7 @@ def api_custom_variant(
     if name.strip():
         resolve_custom_variant(session, item, name.strip())
         session.commit()
-    return RedirectResponse(url=f"/list/{token}", status_code=303)
+    return RedirectResponse(url=f"/list/{token}#item-{item_id}", status_code=303)
 
 
 @router.post("/api/lists/{token}/complete")

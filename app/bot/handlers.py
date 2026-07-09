@@ -14,6 +14,7 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
+    ReactionTypeEmoji,
     WebAppInfo,
 )
 from sqlalchemy import extract, select
@@ -701,6 +702,14 @@ def _list_keyboard(tr: dict, list_id: int, list_url: str) -> InlineKeyboardMarku
     )
 
 
+async def _thumbs_up(message: Message) -> None:
+    """Acknowledge that the message was turned into list items."""
+    try:
+        await message.react([ReactionTypeEmoji(emoji="👍")])
+    except Exception:
+        pass  # reactions can be unavailable (old message, chat settings)
+
+
 @router.message(F.text & ~F.text.startswith("/"))
 async def handle_list_text(message: Message) -> None:
     with session_scope() as session:
@@ -736,6 +745,7 @@ async def handle_list_text(message: Message) -> None:
             pending = _pending_rows(session, user.id)
             is_new = True
 
+    await _thumbs_up(message)
     list_url = f"{settings.web_base_url}/list/{token}"
     if is_new:
         text = [tr["added"].format(count=added)]

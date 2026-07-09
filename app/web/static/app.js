@@ -97,40 +97,8 @@ function initSwipeDelete() {
   });
 }
 
-// Picking a variant POSTs and redirects, which would land the user back at the top of
-// the page. Remember which item was resolved and scroll back to it after the reload,
-// so they can carry on from where they were.
-const FOCUS_KEY = "focusItemId";
-
-// The browser restores its own scroll position after load, which would undo ours.
-// Only take over when we actually have an item to scroll back to.
-if (sessionStorage.getItem(FOCUS_KEY) && "scrollRestoration" in history) {
-  history.scrollRestoration = "manual";
-}
-
-function initVariantScroll() {
-  document.querySelectorAll("li.needs-choice[data-item-id]").forEach((li) => {
-    li.querySelectorAll("form").forEach((form) => {
-      form.addEventListener("submit", () => {
-        sessionStorage.setItem(FOCUS_KEY, li.dataset.itemId);
-      });
-    });
-  });
-}
-
-function scrollToFocusItem(clear) {
-  const id = sessionStorage.getItem(FOCUS_KEY);
-  if (!id) return;
-  const el = document.querySelector(
-    `li.item[data-id="${id}"], li.needs-choice[data-item-id="${id}"]`
-  );
-  if (el) el.scrollIntoView({ block: "center" });
-  if (clear) {
-    sessionStorage.removeItem(FOCUS_KEY);
-    if ("scrollRestoration" in history) history.scrollRestoration = "auto";
-  }
-}
-
+// Note: after picking a variant the server redirects to "#item-<id>", so the browser
+// lands on the resolved item natively. No scroll handling is needed here.
 document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll("li.item[data-id]").forEach((el) => {
     el.addEventListener("click", () => {
@@ -140,12 +108,4 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   initCompleteForm();
   initSwipeDelete();
-  initVariantScroll();
-  scrollToFocusItem(false);
-});
-
-// Fonts/images can still shift layout after DOMContentLoaded, so land it again once
-// everything has settled, then hand scroll restoration back to the browser.
-window.addEventListener("load", () => {
-  requestAnimationFrame(() => scrollToFocusItem(true));
 });

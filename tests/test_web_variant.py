@@ -58,11 +58,13 @@ def test_choose_variant_resolves_item(client):
         data={"suggestion_id": suggestion_ids[0]},
     )
     assert res.status_code == 303
-    assert res.headers["location"] == f"/list/{token}"
+    # Anchored on the resolved item so the browser lands where the user was.
+    assert res.headers["location"] == f"/list/{token}#item-{item_id}"
 
     # The list page no longer shows the picker for that item.
     page = client.get(f"/list/{token}")
     assert "needs-choice" not in page.text
+    assert f'id="item-{item_id}"' in page.text
 
 
 def test_choose_variant_unknown_item_404(client):
