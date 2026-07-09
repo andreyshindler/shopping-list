@@ -12,7 +12,7 @@ from statistics import median
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.categories import categorize
+from app.categories import NON_WEIGHED_TERMS, categorize
 from app.models import GlobalProduct
 from app.pricing import normalize_name
 
@@ -22,15 +22,15 @@ _TOKEN_RE = re.compile(r"[^\W\d_]+", re.UNICODE)
 # Most variant choices to surface for one item (across all categories).
 _MAX_VARIANTS = 18
 
-# Terms the user buys by the unit, never by weight. The Shufersal catalog marks
-# per-kilo SKUs with a "(ק)" tag (stored either as "(ק)" or mirrored ")ק(" ), which
-# makes them look deceptively cheap and skews both the picker and the price estimate.
-NON_KILO_TERMS = ("חסה", "כוסברה", "עגבניות שרי")
-_NON_KILO_NORMALIZED = {normalize_name(t) for t in NON_KILO_TERMS}
+# For per-unit terms, drop the catalog's per-kilo SKUs: Shufersal tags them "(ק)"
+# (stored either as "(ק)" or mirrored ")ק(" ), and their per-kg price is not comparable
+# to a per-unit one — it skews both the picker and the price estimate.
+_NON_KILO_NORMALIZED = {normalize_name(t) for t in NON_WEIGHED_TERMS}
 _KILO_SKU_RE = re.compile(r"[()]\s*ק\s*[()]")
 
 
-def _is_kilo_sku(name: str) -> bool:
+def is_kilo_sku(name: str) -> bool:
+    """True for catalog SKUs priced per kilogram (tagged "(ק)")."""
     return bool(_KILO_SKU_RE.search(name))
 
 
@@ -89,7 +89,7 @@ def find_variants(session: Session, query: str) -> list[GlobalProduct]:
         # prefix of a longer one (שוקו should not bring back שוקולד).
         if not query_tokens.issubset(_tokens(product.name)):
             continue
-        if drop_kilo and _is_kilo_sku(product.name):
+        if drop_kilo and is_kilo_sku(product.name):
             continue
         key = _variant_key(product.name)
         if key not in representatives:  # first seen is cheapest (ordered by price)

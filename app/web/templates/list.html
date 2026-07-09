@@ -44,7 +44,7 @@
     {% for item in members %}
     {% if item.needs_choice and list.status == "active" %}
     <li class="item needs-choice" data-item-id="{{ item.id }}">
-      <span class="name">{{ item.raw_name }}{% if item.category in weighed %}<span class="qty">{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }} {{ t.unit_kg }}</span>{% elif item.quantity != 1 %}<span class="qty">×{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }}</span>{% endif %}</span>
+      <span class="name">{{ item.raw_name }}{% if item.weighed %}<span class="qty">{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }} {{ t.unit_kg }}</span>{% elif item.quantity != 1 %}<span class="qty">×{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }}</span>{% endif %}</span>
       <div class="variants">
         <span class="variants-hint">{{ t.pick_variant }}</span>
         {% for category, group in item.suggestions|groupby("category") %}
@@ -54,7 +54,7 @@
             {% for s in group %}
             <form method="post" action="/api/lists/{{ list.web_token }}/items/{{ item.id }}/choose-variant" class="variant-form">
               <input type="hidden" name="suggestion_id" value="{{ s.id }}" />
-              <button type="submit" class="variant">{{ s.name }}{% if s.price is not none %}<span class="price">{{ money(s.price) }}</span>{% endif %}</button>
+              <button type="submit" class="variant">{{ s.name }}{% if s.weighed is not none %} <span class="qty">{{ t.unit_kg if s.weighed else t.unit_each }}</span>{% endif %}{% if s.price is not none %}<span class="price">{{ money(s.price) }}</span>{% endif %}</button>
             </form>
             {% endfor %}
           </div>
@@ -69,7 +69,7 @@
     {% else %}
     <li class="item" data-id="{{ item.id }}" data-token="{{ list.web_token }}">
       <span class="check">{{ check_svg|safe }}</span>
-      <span class="name">{{ item.raw_name }}{% if item.category in weighed %}<span class="qty">{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }} {{ t.unit_kg }}</span>{% elif item.quantity != 1 %}<span class="qty">×{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }}</span>{% endif %}</span>
+      <span class="name">{{ item.raw_name }}{% if item.weighed %}<span class="qty">{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }} {{ t.unit_kg }}</span>{% elif item.quantity != 1 %}<span class="qty">×{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }}</span>{% endif %}</span>
       {% if item.real_price is not none %}
         <span class="price real">{{ money(item.real_price) }}</span>
       {% elif item.predicted_price is not none %}
@@ -91,7 +91,7 @@
     {% for item in bought %}
     <li class="item bought" data-id="{{ item.id }}" data-token="{{ list.web_token }}">
       <span class="check">{{ check_svg|safe }}</span>
-      <span class="name">{{ item.raw_name }}{% if item.category in weighed %}<span class="qty">{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }} {{ t.unit_kg }}</span>{% elif item.quantity != 1 %}<span class="qty">×{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }}</span>{% endif %}</span>
+      <span class="name">{{ item.raw_name }}{% if item.weighed %}<span class="qty">{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }} {{ t.unit_kg }}</span>{% elif item.quantity != 1 %}<span class="qty">×{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }}</span>{% endif %}</span>
       {% if item.real_price is not none %}
         <span class="price real">{{ money(item.real_price) }}</span>
       {% elif item.predicted_price is not none %}
@@ -119,7 +119,7 @@
   <form method="post" action="/api/lists/{{ list.web_token }}/complete">
     {% for item in bought %}
     <label class="field">
-      <span>{{ item.raw_name }}{% if item.category in weighed %} ({{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }} {{ t.unit_kg }}){% elif item.quantity != 1 %} (×{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }}){% endif %}</span>
+      <span>{{ item.raw_name }}{% if item.weighed %} ({{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }} {{ t.unit_kg }}){% elif item.quantity != 1 %} (×{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }}){% endif %}</span>
       <input type="number" step="0.01" min="0" name="price_{{ item.id }}"
              placeholder="{{ '%.2f'|format(item.predicted_price * item.quantity) if item.predicted_price is not none else '' }}" />
     </label>

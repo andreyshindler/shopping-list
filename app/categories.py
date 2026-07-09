@@ -26,9 +26,26 @@ CATEGORY_ORDER: list[str] = [
 # price is per-kg (vegetables, fruit, meat, fish). Everything else is per-unit.
 WEIGHED_CATEGORIES: set[str] = {"Produce", "Meat & Fish"}
 
+# Produce sold by the unit, not by weight (a head of lettuce, a bunch of coriander,
+# a cauliflower). Overrides ``WEIGHED_CATEGORIES``. Also used to drop the catalog's
+# per-kilo "(ק)" SKUs, whose per-kg price is not comparable to a per-unit one.
+# Keys are normalized item names (see ``pricing.normalize_name``).
+NON_WEIGHED_TERMS: set[str] = {
+    "חסה", "חסה שטופה", "כוסברה", "עירית", "עירת", "כרובית",
+}
 
-def is_weighed(category: str) -> bool:
-    """True where quantity is kilograms (produce, meat & fish)."""
+# Sold both ways: the user picks kilograms or units in the web picker. The pick is
+# stored on the item as ``Item.weighed_override``.
+UNIT_CHOICE_TERMS: set[str] = {"עגבניות שרי"}
+
+
+def is_weighed(category: str, normalized_name: str = "") -> bool:
+    """True where quantity means kilograms (produce, meat & fish).
+
+    An explicit per-unit term wins over its category.
+    """
+    if normalized_name in NON_WEIGHED_TERMS:
+        return False
     return category in WEIGHED_CATEGORIES
 
 

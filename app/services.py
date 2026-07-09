@@ -8,11 +8,12 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.categories import DUAL_CATEGORY_TERMS, categorize, is_weighed
+from app.categories import DUAL_CATEGORY_TERMS, UNIT_CHOICE_TERMS, categorize
 from app.global_prices import (
     find_variants,
     global_estimate,
     is_ambiguous,
+    is_kilo_sku,
     variant_category,
 )
 from app.models import (
@@ -109,9 +110,33 @@ def enrich_item_with_global(session: Session, user_id: int, item: Item) -> float
             )
         return item.predicted_price
 
+    # Terms sold both by weight and by the unit: let the user pick, pricing each option
+    # from the matching catalog SKUs (per-kilo "(ק)" ones vs the rest).
+    if item.normalized_name in UNIT_CHOICE_TERMS:
+        catalog = find_variants(session, item.raw_name)
+        per_unit = [v for v in catalog if not is_kilo_sku(v.name)]
+        prices = {
+            True: global_estimate(catalog, weighed=True),
+            False: global_estimate(per_unit),
+        }
+        item.needs_choice = True
+        for weighed, price in prices.items():
+            item.suggestions.append(
+                ItemSuggestion(
+                    name=item.raw_name,
+                    normalized_name=item.normalized_name,
+                    category=item.category,
+                    price=item.predicted_price if item.predicted_price is not None else price,
+                    weighed=weighed,
+                )
+            )
+        if item.predicted_price is None:
+            item.predicted_price = prices[False]
+        return item.predicted_price
+
     variants = find_variants(session, item.raw_name)
     if item.predicted_price is None and variants:  # no history -> fall back to catalog
-        item.predicted_price = global_estimate(variants, weighed=is_weighed(item.category))
+        item.predicted_price = global_estimate(variants, weighed=item.weighed)
     candidates = _candidate_variants(session, user_id, item.normalized_name, variants)
     # Offer the picker for generic catalog terms, or whenever the user has prior picks
     # (including their own free-text additions) remembered for this term.
@@ -295,6 +320,8 @@ def resolve_variant(
     # Trust the suggestion's category: for dual-category terms it *is* the user's pick,
     # and for catalog variants it is the grouping they saw in the picker.
     item.category = suggestion.category or categorize(suggestion.normalized_name)
+    if suggestion.weighed is not None:  # kg-vs-unit pick
+        item.weighed_override = suggestion.weighed
     # Prefer the user's own paid history for this exact product over the suggestion's
     # catalog price, so a product they've bought before keeps its real price.
     hist = predicted_price(session, shopping_list.user_id, suggestion.normalized_name)

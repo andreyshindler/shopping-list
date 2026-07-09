@@ -18,6 +18,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from app.categories import is_weighed
+
 
 def _uuid() -> str:
     return uuid.uuid4().hex
@@ -85,6 +87,15 @@ class Item(Base):
     from_pending: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # True while the item has unresolved variant suggestions awaiting a user pick.
     needs_choice: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Set when the user explicitly picked kilograms/units for a term sold both ways.
+    weighed_override: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+
+    @property
+    def weighed(self) -> bool:
+        """Quantity is kilograms rather than units. A user's explicit pick wins."""
+        if self.weighed_override is not None:
+            return self.weighed_override
+        return is_weighed(self.category, self.normalized_name)
 
     shopping_list: Mapped[ShoppingList] = relationship(back_populates="items")
     suggestions: Mapped[list[ItemSuggestion]] = relationship(
@@ -155,6 +166,8 @@ class ItemSuggestion(Base):
     normalized_name: Mapped[str] = mapped_column(String(255))
     category: Mapped[str] = mapped_column(String(64), default="Other", server_default="Other")
     price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # For kg/unit choices: True = priced per kilogram, False = per unit, None = n/a.
+    weighed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
     item: Mapped[Item] = relationship(back_populates="suggestions")
 
