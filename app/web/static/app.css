@@ -219,6 +219,8 @@ button.primary {
 }
 button.primary:hover { background: var(--accent-dark); }
 
+button.save-finish { margin: 4px 0 12px; }
+
 .finish-form { margin-top: 8px; }
 button.secondary {
   width: 100%;

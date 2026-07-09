@@ -107,16 +107,24 @@
 <p class="empty">{{ t.empty_list }}</p>
 {% endif %}
 
+{% set all_bought = list.status == "active" and totals.total_count and totals.bought_count == totals.total_count %}
+
+{# Submit sits above the price card, right under the bought items. It lives outside
+   the form, so it is wired to it with the `form` attribute. #}
+{% if all_bought %}
+<button type="submit" form="complete-form" class="primary save-finish">{{ t.save_finish }}</button>
+{% endif %}
+
 {% if list.status == "ended" %}
 <div class="complete-card">
   <h2>{{ t.list_ended }}</h2>
   {% if groups %}<p>{{ t.missing_saved }}</p>{% endif %}
 </div>
-{% elif list.status == "active" and totals.total_count and totals.bought_count == totals.total_count %}
+{% elif all_bought %}
 <div class="complete-card">
   <h2>{{ t.all_done }}</h2>
   <p>{{ t.enter_paid }}</p>
-  <form method="post" action="/api/lists/{{ list.web_token }}/complete">
+  <form id="complete-form" method="post" action="/api/lists/{{ list.web_token }}/complete">
     {% for item in bought %}
     <label class="field">
       <span>{{ item.raw_name }}{% if item.weighed %} ({{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }} {{ t.unit_kg }}){% elif item.quantity != 1 %} (×{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }}){% endif %}</span>
@@ -129,7 +137,6 @@
       <input type="number" step="0.01" min="0" name="real_total" required
              value="{{ '%.2f'|format(totals.predicted_total) if totals.predicted_total else '' }}" />
     </label>
-    <button type="submit" class="primary">{{ t.save_finish }}</button>
   </form>
 </div>
 {% endif %}
