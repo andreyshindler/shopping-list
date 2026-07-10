@@ -11,18 +11,18 @@
 </header>
 
 <div class="stat-grid">
-  <div class="stat-card">
+  <a class="stat-card link" href="/stats/{{ user.stats_token }}/categories">
     <div class="value">{{ money(summary.total_spent) }}</div>
     <div class="label">{{ t.total_spent }}</div>
-  </div>
+  </a>
   <a class="stat-card link" href="/stats/{{ user.stats_token }}/trips">
     <div class="value">{{ summary.total_trips }}</div>
     <div class="label">{{ t.shopping_trips }}</div>
   </a>
-  <div class="stat-card">
+  <a class="stat-card link" href="/stats/{{ user.stats_token }}/trips?sort=cost">
     <div class="value">{{ money(averages.avg_trip_cost) }}</div>
     <div class="label">{{ t.avg_trip_cost }}</div>
-  </div>
+  </a>
   <div class="stat-card">
     <div class="value">{{ averages.avg_basket_size }}</div>
     <div class="label">{{ t.avg_basket_size }}</div>
@@ -57,11 +57,11 @@
 <div class="bars">
   <h2>{{ t.yearly_spending }}</h2>
   {% for p in summary.yearly %}
-  <div class="bar-row">
+  <a class="bar-row" href="/stats/{{ user.stats_token }}/trips?year={{ p.period }}">
     <span class="period">{{ p.period }}</span>
     <span class="track"><span style="width: {{ (100 * p.total / summary.yearly[0].total) if summary.yearly[0].total else 0 }}%"></span></span>
     <span class="amount">{{ money(p.total) }}</span>
-  </div>
+  </a>
   {% endfor %}
 </div>
 {% endif %}
@@ -70,8 +70,10 @@
 <div class="bars">
   <h2>{{ t.most_bought }}</h2>
   <ul class="toplist">
-    {% for t in summary.top_items %}
-    <li><span>{{ t.name }}</span><span class="count">{{ t.count }}×</span></li>
+    {% for it in summary.top_items %}
+    <li><a class="toplist-row" href="/stats/{{ user.stats_token }}/item?name={{ it.name|urlencode }}">
+      <span>{{ it.name }}</span><span class="count">{{ it.count }}×</span>
+    </a></li>
     {% endfor %}
   </ul>
 </div>

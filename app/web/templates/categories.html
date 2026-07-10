@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% macro money(value) %}{{ "%.2f"|format(value) }} {{ currency }}{% endmacro %}
+
+{% block title %}{{ t.spend_by_category }}{% endblock %}
+
+{% block content %}
+<header class="app">
+  <h1>🧷 {{ t.spend_by_category }}</h1>
+  <a class="date" href="/stats/{{ user.stats_token }}">{{ t.back_to_stats }}</a>
+</header>
+
+{% if not rows %}
+<p class="empty">{{ t.no_trips }}</p>
+{% else %}
+<div class="bars">
+  {% for r in rows %}
+  <div class="bar-row">
+    <span class="period">{{ cat_labels.get(r.category, r.category) }}</span>
+    <span class="track"><span style="width: {{ (100 * r.total / max_total) }}%"></span></span>
+    <span class="amount">{{ money(r.total) }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

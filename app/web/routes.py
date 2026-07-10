@@ -23,7 +23,14 @@ from app.services import (
     resolve_variant,
     toggle_item,
 )
-from app.stats import get_stats, get_trip_averages, get_trips
+from app.stats import (
+    get_category_spend,
+    get_item_history,
+    get_stats,
+    get_top_trips,
+    get_trip_averages,
+    get_trips,
+)
 from app.web.i18n import CATEGORY_LABELS, MONTH_NAMES, i18n_context, normalize_lang
 
 router = APIRouter()
@@ -253,25 +260,82 @@ def view_stats(stats_token: str, request: Request, session: Session = Depends(ge
     )
 
 
+def _get_stats_user(session: Session, stats_token: str) -> User:
+    user = session.scalar(select(User).where(User.stats_token == stats_token))
+    if user is None:
+        raise HTTPException(status_code=404, detail="Stats not found")
+    return user
+
+
 @router.get("/stats/{stats_token}/trips", response_class=HTMLResponse)
 def view_trips(
     stats_token: str,
     request: Request,
     month: str | None = None,
+    year: str | None = None,
+    sort: str | None = None,
     session: Session = Depends(get_session),
 ):
-    user = session.scalar(select(User).where(User.stats_token == stats_token))
-    if user is None:
-        raise HTTPException(status_code=404, detail="Stats not found")
+    """Trips drilldown: month/year-grouped, or a flat cost-ranked list (``sort=cost``)."""
+    user = _get_stats_user(session, stats_token)
+    ctx = i18n_context(user.language, user.stats_token, "stats")
+    labels = ctx["t"]
+    if sort == "cost":
+        groups, flat_trips = None, get_top_trips(session, user.id)
+        page_title = labels["expensive_trips"]
+    else:
+        groups, flat_trips = get_trips(session, user.id, month, year), None
+        page_title = labels["shopping_trips"]
     return _templates().TemplateResponse(
         request,
         "trips.html",
         {
             "user": user,
-            "groups": get_trips(session, user.id, month),
+            "groups": groups,
+            "flat_trips": flat_trips,
+            "page_title": page_title,
             "currency": user.currency,
-            "month": month,
             "month_names": MONTH_NAMES[normalize_lang(user.language)],
+            **ctx,
+        },
+    )
+
+
+@router.get("/stats/{stats_token}/categories", response_class=HTMLResponse)
+def view_categories(
+    stats_token: str, request: Request, session: Session = Depends(get_session)
+):
+    user = _get_stats_user(session, stats_token)
+    rows = get_category_spend(session, user.id)
+    max_total = max((r.total for r in rows), default=0.0)
+    return _templates().TemplateResponse(
+        request,
+        "categories.html",
+        {
+            "user": user,
+            "rows": rows,
+            "max_total": max_total or 1.0,
+            "currency": user.currency,
+            **i18n_context(user.language, user.stats_token, "stats"),
+        },
+    )
+
+
+@router.get("/stats/{stats_token}/item", response_class=HTMLResponse)
+def view_item(
+    stats_token: str,
+    request: Request,
+    name: str,
+    session: Session = Depends(get_session),
+):
+    user = _get_stats_user(session, stats_token)
+    return _templates().TemplateResponse(
+        request,
+        "item.html",
+        {
+            "user": user,
+            "history": get_item_history(session, user.id, name),
+            "currency": user.currency,
             **i18n_context(user.language, user.stats_token, "stats"),
         },
     )

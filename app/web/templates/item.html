@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% macro money(value) %}{{ "%.2f"|format(value) }} {{ currency }}{% endmacro %}
+
+{% block title %}{{ history.name }}{% endblock %}
+
+{% block content %}
+<header class="app">
+  <h1>🏷️ {{ history.name }}</h1>
+  <a class="date" href="/stats/{{ user.stats_token }}">{{ t.back_to_stats }}</a>
+</header>
+
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="value">{{ history.times_bought }}×</div>
+    <div class="label">{{ t.times_bought_label }}</div>
+  </div>
+  {% if history.latest_price is not none %}
+  <div class="stat-card">
+    <div class="value">{{ money(history.latest_price) }}</div>
+    <div class="label">{{ t.latest_price }} / {{ t.unit_each }}</div>
+  </div>
+  {% endif %}
+</div>
+
+{% if not history.points %}
+<p class="empty">{{ t.no_price_history }}</p>
+{% else %}
+<div class="bars">
+  <h2>{{ t.price_history }}</h2>
+  <p class="this-month">
+    <span class="label">{{ t.lowest_price }}</span>
+    <span class="amount">{{ money(history.lowest_price) }}</span>
+    <span class="label" style="margin-inline-start:12px">{{ t.highest_price }}</span>
+    <span class="amount">{{ money(history.highest_price) }}</span>
+  </p>
+  <ul class="price-points">
+    {% for p in history.points %}
+    <li class="price-point">
+      <span class="pp-date">{{ p.recorded_at.strftime("%d/%m/%y") }}</span>
+      <span class="pp-price">{{ money(p.price) }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+{% endblock %}
