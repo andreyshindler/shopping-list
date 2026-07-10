@@ -19,10 +19,27 @@
     <div class="value">{{ summary.total_trips }}</div>
     <div class="label">{{ t.shopping_trips }}</div>
   </a>
+  <div class="stat-card">
+    <div class="value">{{ money(averages.avg_trip_cost) }}</div>
+    <div class="label">{{ t.avg_trip_cost }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="value">{{ averages.avg_basket_size }}</div>
+    <div class="label">{{ t.avg_basket_size }}</div>
+  </div>
 </div>
 
 <div class="bars">
   <h2>{{ t.monthly_spending }}</h2>
+  <p class="this-month">
+    <span class="label">{{ t.this_month }}</span>
+    <span class="amount">{{ money(averages.this_month_total) }}</span>
+    {% if averages.month_delta_pct is not none %}
+    <span class="delta {{ 'over' if averages.month_delta_pct > 0 else 'under' }}">
+      {{ '+' if averages.month_delta_pct > 0 else '' }}{{ averages.month_delta_pct }}% {{ t.vs_last_month }}
+    </span>
+    {% endif %}
+  </p>
   {% if summary.monthly %}
     {% for p in summary.monthly %}
     <a class="bar-row" href="/stats/{{ user.stats_token }}/trips?month={{ p.period }}">

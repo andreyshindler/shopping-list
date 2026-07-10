@@ -23,7 +23,7 @@ from app.services import (
     resolve_variant,
     toggle_item,
 )
-from app.stats import get_stats, get_trips
+from app.stats import get_stats, get_trip_averages, get_trips
 from app.web.i18n import CATEGORY_LABELS, MONTH_NAMES, i18n_context, normalize_lang
 
 router = APIRouter()
@@ -246,6 +246,7 @@ def view_stats(stats_token: str, request: Request, session: Session = Depends(ge
         {
             "user": user,
             "summary": summary,
+            "averages": get_trip_averages(session, user.id),
             "max_month": max_month or 1.0,
             **i18n_context(user.language, user.stats_token, "stats"),
         },
