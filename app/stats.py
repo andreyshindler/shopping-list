@@ -104,6 +104,65 @@ class TripGroup:
     trips: list[Trip]
 
 
+@dataclass
+class TripAverages:
+    avg_trip_cost: float
+    avg_basket_size: float
+    this_month_total: float
+    last_month_total: float
+
+    @property
+    def month_delta_pct(self) -> float | None:
+        """Signed percent change this month vs last; ``None`` if no baseline."""
+        if not self.last_month_total:
+            return None
+        change = (self.this_month_total - self.last_month_total) / self.last_month_total
+        return round(change * 100, 1)
+
+
+def get_trip_averages(
+    session: Session, user_id: int, now: datetime | None = None
+) -> TripAverages:
+    """Typical-trip figures + this-vs-last-month spend.
+
+    Computed in Python (like ``get_trips``) so it works on SQLite too; ``now`` is
+    injectable for deterministic tests.
+    """
+    now = now or datetime.utcnow()
+    lists = (
+        session.query(ShoppingList)
+        .filter(
+            ShoppingList.user_id == user_id,
+            ShoppingList.status == "completed",
+            ShoppingList.completed_at.is_not(None),
+        )
+        .all()
+    )
+    trips = len(lists)
+    total = sum(sl.real_total or 0.0 for sl in lists)
+    items = sum(1 for sl in lists for i in sl.items if i.is_bought)
+
+    cur = (now.year, now.month)
+    prev = (now.year, now.month - 1) if now.month > 1 else (now.year - 1, 12)
+    this_month = sum(
+        sl.real_total or 0.0
+        for sl in lists
+        if (sl.completed_at.year, sl.completed_at.month) == cur
+    )
+    last_month = sum(
+        sl.real_total or 0.0
+        for sl in lists
+        if (sl.completed_at.year, sl.completed_at.month) == prev
+    )
+
+    return TripAverages(
+        avg_trip_cost=round(total / trips, 2) if trips else 0.0,
+        avg_basket_size=round(items / trips, 1) if trips else 0.0,
+        this_month_total=round(this_month, 2),
+        last_month_total=round(last_month, 2),
+    )
+
+
 def get_trips(session: Session, user_id: int, month: str | None = None) -> list[TripGroup]:
     """Completed shopping trips, newest first, grouped by calendar month.
 
