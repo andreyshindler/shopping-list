@@ -23,8 +23,8 @@ from app.services import (
     resolve_variant,
     toggle_item,
 )
-from app.stats import get_stats
-from app.web.i18n import CATEGORY_LABELS, i18n_context, normalize_lang
+from app.stats import get_stats, get_trips
+from app.web.i18n import CATEGORY_LABELS, MONTH_NAMES, i18n_context, normalize_lang
 
 router = APIRouter()
 
@@ -247,6 +247,30 @@ def view_stats(stats_token: str, request: Request, session: Session = Depends(ge
             "user": user,
             "summary": summary,
             "max_month": max_month or 1.0,
+            **i18n_context(user.language, user.stats_token, "stats"),
+        },
+    )
+
+
+@router.get("/stats/{stats_token}/trips", response_class=HTMLResponse)
+def view_trips(
+    stats_token: str,
+    request: Request,
+    month: str | None = None,
+    session: Session = Depends(get_session),
+):
+    user = session.scalar(select(User).where(User.stats_token == stats_token))
+    if user is None:
+        raise HTTPException(status_code=404, detail="Stats not found")
+    return _templates().TemplateResponse(
+        request,
+        "trips.html",
+        {
+            "user": user,
+            "groups": get_trips(session, user.id, month),
+            "currency": user.currency,
+            "month": month,
+            "month_names": MONTH_NAMES[normalize_lang(user.language)],
             **i18n_context(user.language, user.stats_token, "stats"),
         },
     )

@@ -15,21 +15,21 @@
     <div class="value">{{ money(summary.total_spent) }}</div>
     <div class="label">{{ t.total_spent }}</div>
   </div>
-  <div class="stat-card">
+  <a class="stat-card link" href="/stats/{{ user.stats_token }}/trips">
     <div class="value">{{ summary.total_trips }}</div>
     <div class="label">{{ t.shopping_trips }}</div>
-  </div>
+  </a>
 </div>
 
 <div class="bars">
   <h2>{{ t.monthly_spending }}</h2>
   {% if summary.monthly %}
     {% for p in summary.monthly %}
-    <div class="bar-row">
+    <a class="bar-row" href="/stats/{{ user.stats_token }}/trips?month={{ p.period }}">
       <span class="period">{{ p.period }}</span>
       <span class="track"><span style="width: {{ (100 * p.total / max_month) }}%"></span></span>
       <span class="amount">{{ money(p.total) }}</span>
-    </div>
+    </a>
     {% endfor %}
   {% else %}
     <p class="empty">{{ t.no_trips }}</p>

@@ -61,6 +61,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "yearly_spending": "Yearly spending",
         "most_bought": "Most bought items",
         "no_trips": "No completed trips yet.",
+        "trips_paid": "Paid",
+        "trips_est": "Est.",
+        "trips_items": "{n} items",
+        "back_to_stats": "← Back to stats",
         "unit_kg": "kg",
         "unit_each": "each",
     },
@@ -96,9 +100,25 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "yearly_spending": "הוצאות שנתיות",
         "most_bought": "הפריטים הנפוצים ביותר",
         "no_trips": "אין עדיין קניות שהושלמו.",
+        "trips_paid": "שולם",
+        "trips_est": "צפי",
+        "trips_items": "{n} פריטים",
+        "back_to_stats": "← חזרה לסטטיסטיקה",
         "unit_kg": "ק\"ג",
         "unit_each": "יחידה",
     },
+}
+
+
+MONTH_NAMES: dict[str, list[str]] = {
+    "en": [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December",
+    ],
+    "he": [
+        "ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
+        "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר",
+    ],
 }
 
 

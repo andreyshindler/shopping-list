@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% macro money(value) %}{{ "%.2f"|format(value) }} {{ currency }}{% endmacro %}
+
+{% block title %}{{ t.shopping_trips }}{% endblock %}
+
+{% block content %}
+<header class="app">
+  <h1>🧺 {{ t.shopping_trips }}</h1>
+  <a class="date" href="/stats/{{ user.stats_token }}">{{ t.back_to_stats }}</a>
+</header>
+
+{% if not groups %}
+<p class="empty">{{ t.no_trips }}</p>
+{% endif %}
+
+{% for g in groups %}
+<div class="bars">
+  <h2>{{ month_names[g.month - 1] }} {{ g.year }} · {{ money(g.total) }}</h2>
+  <ul class="trips">
+    {% for trip in g.trips %}
+    <li>
+      <a class="trip" href="/list/{{ trip.web_token }}">
+        <span class="trip-main">
+          <span class="trip-date">{{ trip.completed_at.strftime("%d/%m/%y") }}</span>
+          <span class="trip-items">{{ t.trips_items.format(n=trip.item_count) }}</span>
+        </span>
+        <span class="trip-end">
+          <span class="trip-paid">{{ money(trip.real_total) }}</span>
+          {% if trip.predicted_total %}
+          <span class="trip-var {{ 'over' if trip.variance > 0 else 'under' }}">
+            {{ t.trips_est }} {{ money(trip.predicted_total) }}
+            ({{ '+' if trip.variance > 0 else '' }}{{ '%.2f'|format(trip.variance) }})
+          </span>
+          {% endif %}
+        </span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endfor %}
+{% endblock %}
