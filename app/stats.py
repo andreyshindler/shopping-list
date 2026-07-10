@@ -9,7 +9,7 @@ from datetime import datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Item, ShoppingList
+from app.models import Item, PriceHistory, ShoppingList
 
 
 @dataclass
@@ -129,15 +129,7 @@ def get_trip_averages(
     injectable for deterministic tests.
     """
     now = now or datetime.utcnow()
-    lists = (
-        session.query(ShoppingList)
-        .filter(
-            ShoppingList.user_id == user_id,
-            ShoppingList.status == "completed",
-            ShoppingList.completed_at.is_not(None),
-        )
-        .all()
-    )
+    lists = _completed_lists(session, user_id)
     trips = len(lists)
     total = sum(sl.real_total or 0.0 for sl in lists)
     items = sum(1 for sl in lists for i in sl.items if i.is_bought)
@@ -163,13 +155,9 @@ def get_trip_averages(
     )
 
 
-def get_trips(session: Session, user_id: int, month: str | None = None) -> list[TripGroup]:
-    """Completed shopping trips, newest first, grouped by calendar month.
-
-    ``month`` optionally filters to a single "YYYY-MM" period (the monthly-bar
-    drilldown). Grouping is done in Python so it works on SQLite too.
-    """
-    lists = (
+def _completed_lists(session: Session, user_id: int) -> list[ShoppingList]:
+    """Completed lists for a user, newest first — the base of every drilldown."""
+    return (
         session.query(ShoppingList)
         .filter(
             ShoppingList.user_id == user_id,
@@ -179,18 +167,38 @@ def get_trips(session: Session, user_id: int, month: str | None = None) -> list[
         .order_by(ShoppingList.completed_at.desc())
         .all()
     )
+
+
+def _to_trip(sl: ShoppingList) -> Trip:
+    return Trip(
+        web_token=sl.web_token,
+        completed_at=sl.completed_at,
+        item_count=len(sl.items),
+        predicted_total=round(sl.predicted_total or 0.0, 2),
+        real_total=round(sl.real_total or 0.0, 2),
+    )
+
+
+def get_trips(
+    session: Session,
+    user_id: int,
+    month: str | None = None,
+    year: str | None = None,
+) -> list[TripGroup]:
+    """Completed shopping trips, newest first, grouped by calendar month.
+
+    ``month`` filters to a single "YYYY-MM" period (the monthly-bar drilldown);
+    ``year`` filters to a "YYYY" (the yearly-bar drilldown). Grouping is done in
+    Python so it works on SQLite too.
+    """
     groups: "OrderedDict[tuple[int, int], TripGroup]" = OrderedDict()
-    for sl in lists:
+    for sl in _completed_lists(session, user_id):
         y, m = sl.completed_at.year, sl.completed_at.month
         if month and f"{y:04d}-{m:02d}" != month:
             continue
-        trip = Trip(
-            web_token=sl.web_token,
-            completed_at=sl.completed_at,
-            item_count=len(sl.items),
-            predicted_total=round(sl.predicted_total or 0.0, 2),
-            real_total=round(sl.real_total or 0.0, 2),
-        )
+        if year and f"{y:04d}" != year:
+            continue
+        trip = _to_trip(sl)
         g = groups.get((y, m))
         if g is None:
             g = TripGroup(year=y, month=m, total=0.0, trips=[])
@@ -198,3 +206,103 @@ def get_trips(session: Session, user_id: int, month: str | None = None) -> list[
         g.trips.append(trip)
         g.total = round(g.total + trip.real_total, 2)
     return list(groups.values())
+
+
+def get_top_trips(session: Session, user_id: int, limit: int = 25) -> list[Trip]:
+    """Completed trips ranked by amount paid (biggest baskets first)."""
+    trips = [_to_trip(sl) for sl in _completed_lists(session, user_id)]
+    trips.sort(key=lambda t: t.real_total, reverse=True)
+    return trips[:limit]
+
+
+@dataclass
+class CategorySpend:
+    category: str
+    total: float
+    item_count: int
+
+
+def get_category_spend(session: Session, user_id: int) -> list[CategorySpend]:
+    """Total spend per category across completed lists, biggest first.
+
+    Per-item real prices are optional at checkout, so a bought item's line cost
+    falls back to its predicted line (``predicted_price * quantity``) — the same
+    estimate the list page shows via ``list_totals``.
+    """
+    totals: dict[str, float] = {}
+    counts: dict[str, int] = {}
+    for sl in _completed_lists(session, user_id):
+        for it in sl.items:
+            if not it.is_bought:
+                continue
+            if it.real_price is not None:
+                line = it.real_price
+            else:
+                line = (it.predicted_price or 0.0) * (it.quantity or 1.0)
+            totals[it.category] = totals.get(it.category, 0.0) + line
+            counts[it.category] = counts.get(it.category, 0) + 1
+    rows = [
+        CategorySpend(category=cat, total=round(total, 2), item_count=counts[cat])
+        for cat, total in totals.items()
+    ]
+    rows.sort(key=lambda c: c.total, reverse=True)
+    return rows
+
+
+@dataclass
+class PricePoint:
+    recorded_at: datetime
+    price: float
+
+
+@dataclass
+class ItemHistory:
+    name: str
+    points: list[PricePoint]
+    times_bought: int
+
+    @property
+    def latest_price(self) -> float | None:
+        return self.points[-1].price if self.points else None
+
+    @property
+    def lowest_price(self) -> float | None:
+        return min((p.price for p in self.points), default=None)
+
+    @property
+    def highest_price(self) -> float | None:
+        return max((p.price for p in self.points), default=None)
+
+
+def get_item_history(
+    session: Session, user_id: int, normalized_name: str
+) -> ItemHistory:
+    """Per-unit price points over time for one item, plus how often it was bought.
+
+    Price points come from ``PriceHistory`` (only recorded when the user entered a
+    real price); ``times_bought`` counts bought ``Item`` rows, so it can exceed the
+    number of recorded prices.
+    """
+    rows = (
+        session.query(PriceHistory)
+        .filter(
+            PriceHistory.user_id == user_id,
+            PriceHistory.normalized_name == normalized_name,
+        )
+        .order_by(PriceHistory.recorded_at)
+        .all()
+    )
+    points = [PricePoint(recorded_at=r.recorded_at, price=r.price) for r in rows]
+
+    times_bought = (
+        session.query(func.count(Item.id))
+        .join(ShoppingList, Item.list_id == ShoppingList.id)
+        .filter(
+            ShoppingList.user_id == user_id,
+            Item.normalized_name == normalized_name,
+            Item.is_bought.is_(True),
+        )
+        .scalar()
+    ) or 0
+
+    return ItemHistory(name=normalized_name, points=points, times_bought=times_bought)
