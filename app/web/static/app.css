@@ -270,3 +270,26 @@ button.danger:hover { background: #fdecea; }
 .toplist li { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .toplist li:last-child { border: none; }
 .toplist .count { color: var(--muted); }
+
+/* Trips drilldown (linked from the Stats page) */
+.stat-card.link { display: block; text-decoration: none; color: inherit; cursor: pointer; }
+.stat-card.link:hover { background: #f7f9fc; }
+.stat-card.link .label::after { content: " ›"; color: var(--accent); font-weight: 700; }
+a.bar-row { text-decoration: none; color: inherit; cursor: pointer; }
+a.bar-row:hover { opacity: 0.85; }
+
+ul.trips { list-style: none; margin: 0; padding: 0; }
+ul.trips li { margin-bottom: 8px; }
+a.trip {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 12px 14px; text-decoration: none; color: var(--ink);
+}
+a.trip:hover { background: #f7f9fc; }
+.trip-date { font-weight: 600; }
+.trip-items { color: var(--muted); font-size: 0.82rem; margin-inline-start: 8px; }
+.trip-end { text-align: end; white-space: nowrap; }
+.trip-paid { font-weight: 700; }
+.trip-var { display: block; font-size: 0.72rem; }
+.trip-var.over { color: #c0392b; }
+.trip-var.under { color: var(--green); }
