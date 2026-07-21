@@ -22,12 +22,14 @@ from app.models import (
     ItemSuggestion,
     PendingItem,
     PriceHistory,
+    ReceiptDraft,
     ShoppingList,
     User,
     UserProduct,
 )
 from app.parsing import parse_message
 from app.pricing import normalize_name, predicted_price
+from app.receipts import ReceiptData, ReceiptItem, receipt_from_json, receipt_to_json
 
 # Catalog variants offered in the web picker. Kept small on purpose: the picker also
 # always shows a free-text "custom product" field, so 3 + custom is enough choice.
@@ -491,3 +493,179 @@ def list_totals(shopping_list: ShoppingList) -> dict[str, float | int]:
         "bought_count": bought_count,
         "total_count": len(shopping_list.items),
     }
+
+
+# ---------------------------------------------------------------------------
+# Receipt scanning: match a parsed receipt to the active list and apply it.
+# ---------------------------------------------------------------------------
+
+
+def get_active_list(session: Session, user_id: int) -> ShoppingList | None:
+    """The user's most recent still-open (active) list — draft or confirmed."""
+    return session.scalar(
+        select(ShoppingList)
+        .where(ShoppingList.user_id == user_id, ShoppingList.status == "active")
+        .order_by(ShoppingList.created_at.desc())
+        .limit(1)
+    )
+
+
+@dataclass
+class ReceiptMatch:
+    item: Item
+    receipt_item: ReceiptItem
+
+
+@dataclass
+class ReceiptPlan:
+    """Preview of what applying a receipt would do to a list."""
+
+    matched: list[ReceiptMatch]  # list items the receipt confirms (price + bought)
+    new_items: list[ReceiptItem]  # receipt lines with no matching list item
+    unmatched_items: list[Item]  # list items the receipt doesn't mention
+
+
+def _name_tokens(normalized: str) -> set[str]:
+    return {tok for tok in normalized.split() if tok}
+
+
+def _names_match(a: set[str], b: set[str]) -> bool:
+    """Loose product match: identical, or one name's words contain the other's.
+
+    Handles "חלב" vs "חלב 3%" (subset) while staying whole-word so "שוקו" never
+    matches "שוקולד". Over-eager matches are caught by the user in the preview.
+    """
+    if not a or not b:
+        return False
+    return a == b or a <= b or b <= a
+
+
+def match_receipt(
+    session: Session, shopping_list: ShoppingList | None, receipt: ReceiptData
+) -> ReceiptPlan:
+    """Line up receipt items against a list's items (each list item matched once)."""
+    list_items = list(shopping_list.items) if shopping_list is not None else []
+    item_tokens = [(it, _name_tokens(it.normalized_name)) for it in list_items]
+    consumed: set[int] = set()
+    matched: list[ReceiptMatch] = []
+    new_items: list[ReceiptItem] = []
+
+    for r in receipt.items:
+        rt = _name_tokens(normalize_name(r.name))
+        hit = None
+        for idx, (it, toks) in enumerate(item_tokens):
+            if idx in consumed:
+                continue
+            if _names_match(rt, toks):
+                hit = idx
+                break
+        if hit is None:
+            new_items.append(r)
+        else:
+            consumed.add(hit)
+            matched.append(ReceiptMatch(item=item_tokens[hit][0], receipt_item=r))
+
+    unmatched = [it for i, (it, _) in enumerate(item_tokens) if i not in consumed]
+    return ReceiptPlan(matched=matched, new_items=new_items, unmatched_items=unmatched)
+
+
+def _receipt_datetime(receipt: ReceiptData) -> datetime:
+    """The purchase timestamp: the receipt's date at midnight UTC, else now."""
+    d = receipt.purchased_on
+    if d is None:
+        return datetime.now(timezone.utc)
+    return datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
+
+
+def _record_receipt_price(
+    session: Session, user_id: int, normalized_name: str, r: ReceiptItem,
+    currency: str, when: datetime,
+) -> None:
+    """Feed the price history with the PER-UNIT price, dated to the purchase."""
+    qty = r.quantity or 1.0
+    session.add(
+        PriceHistory(
+            user_id=user_id,
+            normalized_name=normalized_name,
+            price=round(r.price / qty, 2),
+            currency=currency,
+            recorded_at=when,
+        )
+    )
+
+
+def apply_receipt(
+    session: Session,
+    shopping_list: ShoppingList,
+    receipt: ReceiptData,
+    plan: ReceiptPlan | None = None,
+) -> ShoppingList:
+    """Apply a scanned receipt: set real prices on matches, add new bought items,
+    complete the list, and record prices to history dated to the purchase.
+
+    Mirrors :func:`complete_list`'s per-unit price learning; unmatched list items are
+    left untouched (not marked bought) so the list still reflects what wasn't bought.
+    """
+    plan = plan or match_receipt(session, shopping_list, receipt)
+    currency = shopping_list.user.currency
+    when = _receipt_datetime(receipt)
+
+    for m in plan.matched:
+        m.item.real_price = round(m.receipt_item.price, 2)
+        m.item.is_bought = True
+        m.item.bought_at = when
+        _record_receipt_price(
+            session, shopping_list.user_id, m.item.normalized_name,
+            m.receipt_item, currency, when,
+        )
+
+    max_order = max((i.sort_order for i in shopping_list.items), default=-1)
+    for r in plan.new_items:
+        max_order += 1
+        norm = normalize_name(r.name)
+        # Append via the relationship so the in-memory items collection stays in sync
+        # (both the bot summary and callers re-read shopping_list.items right after).
+        shopping_list.items.append(
+            Item(
+                raw_name=r.name,
+                normalized_name=norm,
+                category=categorize(norm),
+                quantity=r.quantity,
+                real_price=round(r.price, 2),
+                is_bought=True,
+                bought_at=when,
+                sort_order=max_order,
+            )
+        )
+        _record_receipt_price(session, shopping_list.user_id, norm, r, currency, when)
+
+    shopping_list.real_total = receipt.computed_total
+    shopping_list.is_draft = False
+    shopping_list.status = "completed"
+    shopping_list.completed_at = when
+    session.flush()
+    return shopping_list
+
+
+def save_receipt_draft(
+    session: Session, user_id: int, list_id: int | None, receipt: ReceiptData
+) -> ReceiptDraft:
+    """Persist a parsed receipt awaiting the user's Confirm tap."""
+    draft = ReceiptDraft(
+        user_id=user_id, list_id=list_id, payload=receipt_to_json(receipt)
+    )
+    session.add(draft)
+    session.flush()
+    return draft
+
+
+def load_receipt_draft(session: Session, draft_id: int, user_id: int) -> ReceiptDraft | None:
+    """Fetch a receipt draft, scoped to its owner (guards against cross-user ids)."""
+    draft = session.get(ReceiptDraft, draft_id)
+    if draft is None or draft.user_id != user_id:
+        return None
+    return draft
+
+
+def receipt_from_draft(draft: ReceiptDraft) -> ReceiptData:
+    return receipt_from_json(draft.payload)

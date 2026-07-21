@@ -13,6 +13,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     func,
 )
@@ -197,4 +198,26 @@ class UserProduct(Base):
         UniqueConstraint(
             "user_id", "query_normalized", "chosen_normalized", name="uq_user_product_choice"
         ),
+    )
+
+
+class ReceiptDraft(Base):
+    """A scanned-but-not-yet-applied receipt, awaiting the user's Confirm tap.
+
+    ``payload`` is the parsed ``ReceiptData`` serialized as JSON; ``list_id`` is the
+    active list the receipt will be applied to (nullable — a receipt can be scanned
+    with no open list, in which case a fresh completed list is created on confirm).
+    The row is deleted once applied or cancelled.
+    """
+
+    __tablename__ = "receipt_drafts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    list_id: Mapped[int | None] = mapped_column(
+        ForeignKey("lists.id", ondelete="CASCADE"), nullable=True
+    )
+    payload: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
     )

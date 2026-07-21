@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -30,14 +31,22 @@ from app.bot.i18n import (
 from app.config import get_settings
 from app.db import session_scope
 from app.models import Item, PendingItem, ShoppingList, User
+from app.models import ReceiptDraft
+from app.receipts import ReceiptParseError, parse_receipt
 from app.services import (
     add_item_from_pending,
     append_items_to_list,
+    apply_receipt,
     create_list_from_text,
     delete_lists_in_range,
     discard_carryover,
     get_active_draft,
+    get_active_list,
     get_or_create_user,
+    load_receipt_draft,
+    match_receipt,
+    receipt_from_draft,
+    save_receipt_draft,
 )
 
 router = Router()
@@ -691,6 +700,162 @@ async def btn_currency(message: Message) -> None:
         user = _get_or_create(session, message.from_user)
         lang, current = user.language, user.currency
     await message.answer(t(lang)["currency_current"].format(cur=current), parse_mode="Markdown")
+
+
+# --- Receipt scanning ----------------------------------------------------------
+
+
+@router.message(F.text.in_(button_labels("btn_scan")))
+async def btn_scan(message: Message) -> None:
+    with session_scope() as session:
+        user = _get_or_create(session, message.from_user)
+        tr = t(user.language)
+    if not settings.anthropic_api_key:
+        await message.answer(tr["scan_not_configured"])
+        return
+    await message.answer(tr["scan_prompt"])
+
+
+def _fmt_price(value: float, currency: str) -> str:
+    return _iso(f"{value:.2f} {currency}")
+
+
+def _receipt_preview_text(tr, receipt, plan, currency, has_active) -> str:
+    lines = [tr["scan_preview_title"].format(count=len(receipt.items))]
+    if not has_active:
+        lines.append(tr["scan_no_active_note"])
+    if plan.matched:
+        lines.append("")
+        lines.append(tr["scan_preview_matched"])
+        for m in plan.matched:
+            lines.append(
+                tr["scan_preview_line"].format(
+                    name=m.item.raw_name, price=_fmt_price(m.receipt_item.price, currency)
+                )
+            )
+    if plan.new_items:
+        lines.append("")
+        lines.append(tr["scan_preview_new"])
+        for r in plan.new_items:
+            lines.append(
+                tr["scan_preview_line"].format(name=r.name, price=_fmt_price(r.price, currency))
+            )
+    lines.append("")
+    if receipt.purchased_on:
+        lines.append(tr["scan_preview_date"].format(date=receipt.purchased_on.isoformat()))
+    lines.append(tr["scan_preview_total"].format(amount=_fmt_price(receipt.computed_total, currency)))
+    lines.append("")
+    lines.append(tr["scan_confirm_hint"])
+    return "\n".join(lines)
+
+
+def _scan_keyboard(tr, draft_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=tr["btn_scan_confirm"], callback_data=f"rc:ok:{draft_id}"
+                ),
+                InlineKeyboardButton(
+                    text=tr["btn_scan_cancel"], callback_data=f"rc:no:{draft_id}"
+                ),
+            ]
+        ]
+    )
+
+
+@router.message(F.photo)
+async def handle_receipt_photo(message: Message) -> None:
+    """Any photo is treated as a receipt: read it, preview the match, await Confirm."""
+    with session_scope() as session:
+        user = _get_or_create(session, message.from_user)
+        lang, currency = user.language, user.currency
+        tr = t(lang)
+
+    if not settings.anthropic_api_key:
+        await message.answer(tr["scan_not_configured"])
+        return
+
+    status = await message.answer(tr["scan_reading"])
+    try:
+        file = await message.bot.get_file(message.photo[-1].file_id)
+        buf = await message.bot.download_file(file.file_path)
+        image_bytes = buf.read()
+        receipt = await asyncio.to_thread(
+            parse_receipt,
+            image_bytes,
+            api_key=settings.anthropic_api_key,
+            model=settings.anthropic_model,
+            mime_type="image/jpeg",
+        )
+    except ReceiptParseError:
+        await status.edit_text(tr["scan_failed"])
+        return
+    except Exception:
+        await status.edit_text(tr["scan_failed"])
+        return
+
+    if not receipt.items:
+        await status.edit_text(tr["scan_no_items"])
+        return
+
+    with session_scope() as session:
+        user = _get_or_create(session, message.from_user)
+        active = get_active_list(session, user.id)
+        plan = match_receipt(session, active, receipt)
+        text = _receipt_preview_text(tr, receipt, plan, currency, active is not None)
+        draft = save_receipt_draft(
+            session, user.id, active.id if active else None, receipt
+        )
+        keyboard = _scan_keyboard(tr, draft.id)
+
+    await status.edit_text(text, reply_markup=keyboard)
+
+
+@router.callback_query(F.data.startswith("rc:"))
+async def cb_receipt(callback: CallbackQuery) -> None:
+    _, action, raw_id = callback.data.split(":")
+    draft_id = int(raw_id)
+    with session_scope() as session:
+        user = _get_or_create(session, callback.from_user)
+        lang, currency = user.language, user.currency
+        tr = t(lang)
+        draft = load_receipt_draft(session, draft_id, user.id)
+
+        if draft is None:
+            await callback.answer()
+            try:
+                await callback.message.edit_text(tr["scan_expired"])
+            except Exception:
+                pass
+            return
+
+        if action == "no":
+            session.delete(draft)
+            await callback.answer()
+            await callback.message.edit_text(tr["scan_cancelled"])
+            return
+
+        receipt = receipt_from_draft(draft)
+        sl = session.get(ShoppingList, draft.list_id) if draft.list_id else None
+        if sl is None or sl.status != "active":
+            sl = ShoppingList(user_id=user.id)
+            session.add(sl)
+            session.flush()
+        apply_receipt(session, sl, receipt)
+        count = len(receipt.items)
+        amount = _fmt_price(receipt.computed_total, currency)
+        token = sl.web_token
+        session.delete(draft)
+
+    list_url = f"{settings.web_base_url}/list/{token}"
+    await callback.answer()
+    await callback.message.edit_text(
+        tr["scan_applied"].format(count=count, amount=amount),
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[_web_app_btn(tr["open_your_list"], list_url)]]
+        ),
+    )
 
 
 def _list_keyboard(tr: dict, list_id: int, list_url: str) -> InlineKeyboardMarkup:
