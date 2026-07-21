@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     # Defaults
     default_currency: str = "ILS"
 
+    # Receipt scanning (Claude vision). When anthropic_api_key is empty the bot's
+    # "Scan receipt" feature is disabled and replies that it isn't configured.
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-haiku-4-5-20251001"
+
     # Global price feed (Shufersal). Used by the daily app.jobs.fetch_prices job that
     # populates the shared global_products catalog.
     shufersal_store_id: str = "7290027600007"
