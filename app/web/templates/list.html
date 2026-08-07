@@ -160,7 +160,7 @@
 {% endblock %}
 
 {% block scripts %}
-{% if list.status == "active" %}<script src="/static/app.js"></script>{% endif %}
+{% if list.status == "active" %}<script src="{{ static_url('app.js') }}"></script>{% endif %}
 <script>
 (function () {
   var btn = document.getElementById("report-cat-btn");

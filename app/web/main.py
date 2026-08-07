@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -10,6 +11,29 @@ from fastapi.templating import Jinja2Templates
 
 BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+
+
+def _asset_hash(path: str) -> str:
+    """Short content hash of a static file, or "0" if it can't be read."""
+    try:
+        return hashlib.md5((BASE_DIR / "static" / path).read_bytes()).hexdigest()[:8]
+    except OSError:
+        return "0"
+
+
+# Hash the static assets once at import — a deploy restarts the process, so a per-process
+# cache is enough. StaticFiles sends no Cache-Control, so without this the browser (and
+# the aggressive Telegram webview) can keep serving a stale app.js/app.css after a deploy.
+_STATIC_HASHES = {name: _asset_hash(name) for name in ("app.css", "app.js")}
+
+
+def static_url(path: str) -> str:
+    """`/static/<path>` with a `?v=<hash>` cache-buster that changes only on edit."""
+    version = _STATIC_HASHES.get(path) or _asset_hash(path)
+    return f"/static/{path}?v={version}"
+
+
+templates.env.globals["static_url"] = static_url
 
 # Disable the public API docs/schema — they advertise the full endpoint surface and
 # this is a token-gated personal app, not a public API.
