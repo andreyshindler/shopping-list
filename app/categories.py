@@ -32,11 +32,12 @@ WEIGHED_CATEGORIES: set[str] = {"Produce", "Meat & Fish"}
 # Keys are normalized item names (see ``pricing.normalize_name``).
 NON_WEIGHED_TERMS: set[str] = {
     "חסה", "חסה שטופה", "כוסברה", "עירית", "עירת", "כרובית",
+    "צנון", "צנונית", "עגבניות שרי",
 }
 
 # Sold both ways: the user picks kilograms or units in the web picker. The pick is
 # stored on the item as ``Item.weighed_override``.
-UNIT_CHOICE_TERMS: set[str] = {"עגבניות שרי"}
+UNIT_CHOICE_TERMS: set[str] = set()
 
 
 def is_weighed(category: str, normalized_name: str = "") -> bool:
