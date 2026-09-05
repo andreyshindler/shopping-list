@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections import OrderedDict
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -83,6 +84,14 @@ async def _read_receipt(upload) -> tuple[bytes, str] | None:
     if len(data) > MAX_RECEIPT_BYTES:
         raise HTTPException(status_code=413, detail="Receipt too large")
     return data, content_type
+
+
+async def _crop_receipt(stored: tuple[bytes, str]) -> tuple[bytes, str]:
+    """Auto-crop the receipt to its bounding rectangle (best-effort, off the event loop)."""
+    from app.web.receipt_crop import process_receipt
+
+    data, mime = stored
+    return await asyncio.to_thread(process_receipt, data, mime)
 
 
 def _get_item(session: Session, token: str, item_id: int) -> Item:
@@ -242,7 +251,7 @@ async def api_complete_list(
     # An optional receipt photo may ride along in the same multipart form.
     stored = await _read_receipt(_pick_upload(form))
     if stored:
-        sl.receipt_image, sl.receipt_mime = stored
+        sl.receipt_image, sl.receipt_mime = await _crop_receipt(stored)
     session.commit()
     return RedirectResponse(url=f"/list/{token}", status_code=303)
 
@@ -258,7 +267,7 @@ async def api_upload_receipt(
     form = await request.form()
     stored = await _read_receipt(_pick_upload(form))
     if stored:
-        sl.receipt_image, sl.receipt_mime = stored
+        sl.receipt_image, sl.receipt_mime = await _crop_receipt(stored)
         session.commit()
     return RedirectResponse(url=f"/list/{token}", status_code=303)
 
