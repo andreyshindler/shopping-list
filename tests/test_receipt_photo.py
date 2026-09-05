@@ -100,6 +100,17 @@ def test_two_inputs_picks_the_filled_one(client):
     assert client.get(f"/list/{token}/receipt").content == PNG
 
 
+def test_update_total_after_completion(client):
+    token = _seed(client)
+    client.post(f"/api/lists/{token}/complete", data={"real_total": "20"})
+    # Correct the total on the completed list (no receipt attached).
+    r = client.post(f"/api/lists/{token}/receipt", data={"real_total": "37.5"})
+    assert r.status_code == 303
+    with client.session_factory() as s:
+        sl = s.query(ShoppingList).filter_by(web_token=token).one()
+        assert sl.real_total == 37.5
+
+
 def test_reject_non_image(client):
     token = _seed(client)
     r = client.post(

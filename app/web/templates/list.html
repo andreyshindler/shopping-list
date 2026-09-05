@@ -40,6 +40,11 @@
   {% endif %}
   <form method="post" action="/api/lists/{{ list.web_token }}/receipt"
         enctype="multipart/form-data" class="receipt-form">
+    <label class="field">
+      <span>{{ t.total_paid }} ({{ currency }})</span>
+      <input type="number" step="0.01" min="0" name="real_total"
+             value="{{ '%.2f'|format(list.real_total) if list.real_total is not none else '' }}" />
+    </label>
     <fieldset class="field receipt-fields">
       <span>{{ t.replace_receipt if list.has_receipt else t.add_receipt }}</span>
       <label class="receipt-opt">{{ t.receipt_take_photo }}
@@ -49,7 +54,7 @@
         <input type="file" name="receipt" accept="image/*" />
       </label>
     </fieldset>
-    <button type="submit" class="secondary">{{ t.save_receipt }}</button>
+    <button type="submit" class="secondary">{{ t.save }}</button>
   </form>
 </div>
 {% endif %}
