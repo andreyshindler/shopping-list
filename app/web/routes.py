@@ -262,12 +262,29 @@ async def api_upload_receipt(
     request: Request,
     session: Session = Depends(get_session),
 ):
-    """Attach or replace a list's receipt photo (used after the list is completed)."""
+    """Post-completion edits: update the real total and/or attach/replace the receipt.
+
+    Only ``sl.real_total`` is touched — price history is left as written at completion, so
+    correcting the trip total here never double-writes per-item history.
+    """
     sl = _get_list(session, token)
     form = await request.form()
+    changed = False
+
+    raw_total = form.get("real_total")
+    if raw_total not in (None, ""):
+        try:
+            sl.real_total = round(float(raw_total), 2)
+            changed = True
+        except (TypeError, ValueError):
+            pass
+
     stored = await _read_receipt(_pick_upload(form))
     if stored:
         sl.receipt_image, sl.receipt_mime = await _crop_receipt(stored)
+        changed = True
+
+    if changed:
         session.commit()
     return RedirectResponse(url=f"/list/{token}", status_code=303)
 
