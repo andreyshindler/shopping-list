@@ -20,7 +20,7 @@ def test_crops_bright_rectangle_on_dark_background():
     y0, y1, x0, x1 = 150, 620, 220, 380  # bright "receipt" (470 x 160)
     img[y0:y1, x0:x1] = 245
 
-    out, mime = process_receipt(_png(img), "image/png")
+    out, mime = process_receipt(_png(img))
     assert mime == "image/jpeg"
 
     crop = _decode(out)
@@ -31,15 +31,15 @@ def test_crops_bright_rectangle_on_dark_background():
     assert abs(cw - (x1 - x0)) < 80
 
 
-def test_garbage_bytes_returned_unchanged():
-    data = b"\x89PNG\r\n\x1a\n definitely not an image"
-    assert process_receipt(data, "image/png") == (data, "image/png")
+def test_undecodable_bytes_return_none():
+    assert process_receipt(b"\x89PNG\r\n\x1a\n definitely not an image") is None
+    assert process_receipt(b"") is None
 
 
 def test_full_frame_bright_not_overcropped():
     # Almost the whole frame is bright -> box ~ whole image -> confidence gate rejects it,
     # so the image keeps its dimensions (just re-encoded).
     img = np.full((500, 500, 3), 240, np.uint8)
-    out, _mime = process_receipt(_png(img), "image/png")
+    out, _mime = process_receipt(_png(img))
     crop = _decode(out)
     assert crop.shape[0] == 500 and crop.shape[1] == 500

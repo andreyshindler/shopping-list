@@ -23,31 +23,49 @@ _MAX_AREA_FRAC = 0.92
 _MIN_REDUCTION = 0.15  # cropped area must be <= 85% of the original
 
 
-def process_receipt(data: bytes, mime: str) -> tuple[bytes, str]:
-    """Return ``(cropped_jpeg, "image/jpeg")`` or the original ``(data, mime)`` unchanged.
+def _sniff_mime(data: bytes) -> str:
+    """Best-effort image mime from magic bytes (used only when cv2 is unavailable)."""
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:2] == b"\xff\xd8":
+        return "image/jpeg"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return "image/jpeg"
 
-    Never raises: any decode/processing error falls back to the original.
+
+def process_receipt(data: bytes) -> tuple[bytes, str] | None:
+    """Crop/normalize a receipt photo.
+
+    Returns ``(jpeg_bytes, "image/jpeg")`` on success, or ``None`` when the bytes aren't a
+    decodable image (so the caller stores nothing). Never raises. If OpenCV is unavailable
+    the bytes are passed through with a sniffed mime (best effort, no crop).
     """
+    if not data:
+        return None
     try:
         import cv2
         import numpy as np
+    except Exception:
+        return data, _sniff_mime(data)
 
-        buf = np.frombuffer(data, dtype=np.uint8)
-        img = cv2.imdecode(buf, cv2.IMREAD_COLOR)
+    try:
+        img = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
         if img is None:
-            return data, mime
+            return None  # not a real image -> caller skips it
 
         rect = _detect_receipt_rect(img, cv2, np)
-        if rect is None:
-            return _encode(_fit(img, cv2), cv2), "image/jpeg"
-
-        x, y, w, h = rect
-        cropped = img[y : y + h, x : x + w]
-        if cropped.size == 0:
-            return data, mime
-        return _encode(_fit(cropped, cv2), cv2), "image/jpeg"
+        target = img
+        if rect is not None:
+            x, y, w, h = rect
+            crop = img[y : y + h, x : x + w]
+            if crop.size:
+                target = crop
+        return _encode(_fit(target, cv2), cv2), "image/jpeg"
     except Exception:
-        return data, mime
+        return data, _sniff_mime(data)
 
 
 def _detect_receipt_rect(img, cv2, np):

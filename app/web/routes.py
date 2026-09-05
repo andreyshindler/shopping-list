@@ -50,9 +50,9 @@ def _get_list(session: Session, token: str) -> ShoppingList:
     return sl
 
 
-# Receipt photos are stored in the DB (bytea); cap the size so a stray large upload
-# can't bloat the row / response. Phone photos are usually a few MB.
-MAX_RECEIPT_BYTES = 20 * 1024 * 1024  # 20 MB
+# Receipt photos are stored in the DB (bytea); cap the size so a stray huge upload can't
+# bloat memory. Over the cap we silently skip the receipt rather than failing the request.
+MAX_RECEIPT_BYTES = 30 * 1024 * 1024  # 30 MB
 
 
 def _pick_upload(form):
@@ -67,31 +67,27 @@ def _pick_upload(form):
     return None
 
 
-async def _read_receipt(upload) -> tuple[bytes, str] | None:
-    """Validate and read an uploaded receipt image.
+async def _read_receipt(upload) -> bytes | None:
+    """Read an uploaded receipt file's bytes, or ``None`` if there's nothing usable.
 
-    Returns ``(bytes, content_type)``, or ``None`` when the file field was left empty.
-    Raises 400/413 for a non-image or oversize upload.
+    Deliberately lenient: it does NOT reject on content type (mobile/Telegram webviews
+    often send camera photos as ``application/octet-stream``) and never raises, so a
+    problematic receipt can't abort the rest of the request (e.g. a total update). The
+    bytes are validated later by trying to decode them as an image.
     """
     if upload is None or not getattr(upload, "filename", ""):
         return None  # field omitted or submitted empty
-    content_type = (getattr(upload, "content_type", None) or "").lower()
-    if not content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Receipt must be an image")
     data = await upload.read()
-    if not data:
+    if not data or len(data) > MAX_RECEIPT_BYTES:
         return None
-    if len(data) > MAX_RECEIPT_BYTES:
-        raise HTTPException(status_code=413, detail="Receipt too large")
-    return data, content_type
+    return data
 
 
-async def _crop_receipt(stored: tuple[bytes, str]) -> tuple[bytes, str]:
-    """Auto-crop the receipt to its bounding rectangle (best-effort, off the event loop)."""
+async def _process_receipt(data: bytes) -> tuple[bytes, str] | None:
+    """Crop/normalize the receipt off the event loop. ``None`` if it isn't a real image."""
     from app.web.receipt_crop import process_receipt
 
-    data, mime = stored
-    return await asyncio.to_thread(process_receipt, data, mime)
+    return await asyncio.to_thread(process_receipt, data)
 
 
 def _get_item(session: Session, token: str, item_id: int) -> Item:
@@ -248,10 +244,13 @@ async def api_complete_list(
             except ValueError:
                 continue
     complete_list(session, sl, real_total, item_prices)
-    # An optional receipt photo may ride along in the same multipart form.
-    stored = await _read_receipt(_pick_upload(form))
-    if stored:
-        sl.receipt_image, sl.receipt_mime = await _crop_receipt(stored)
+    # An optional receipt photo may ride along in the same multipart form. A bad photo is
+    # ignored (never blocks completing the list).
+    data = await _read_receipt(_pick_upload(form))
+    if data:
+        processed = await _process_receipt(data)
+        if processed:
+            sl.receipt_image, sl.receipt_mime = processed
     session.commit()
     return RedirectResponse(url=f"/list/{token}", status_code=303)
 
@@ -279,10 +278,12 @@ async def api_upload_receipt(
         except (TypeError, ValueError):
             pass
 
-    stored = await _read_receipt(_pick_upload(form))
-    if stored:
-        sl.receipt_image, sl.receipt_mime = await _crop_receipt(stored)
-        changed = True
+    data = await _read_receipt(_pick_upload(form))
+    if data:
+        processed = await _process_receipt(data)
+        if processed:
+            sl.receipt_image, sl.receipt_mime = processed
+            changed = True
 
     if changed:
         session.commit()
