@@ -40,10 +40,15 @@
   {% endif %}
   <form method="post" action="/api/lists/{{ list.web_token }}/receipt"
         enctype="multipart/form-data" class="receipt-form">
-    <label class="field">
+    <fieldset class="field receipt-fields">
       <span>{{ t.replace_receipt if list.has_receipt else t.add_receipt }}</span>
-      <input type="file" name="receipt" accept="image/*" capture="environment" required />
-    </label>
+      <label class="receipt-opt">{{ t.receipt_take_photo }}
+        <input type="file" name="receipt" accept="image/*" capture="environment" />
+      </label>
+      <label class="receipt-opt">{{ t.receipt_choose_file }}
+        <input type="file" name="receipt" accept="image/*" />
+      </label>
+    </fieldset>
     <button type="submit" class="secondary">{{ t.save_receipt }}</button>
   </form>
 </div>
@@ -151,10 +156,15 @@
       <input type="number" step="0.01" min="0" name="real_total" required
              value="{{ '%.2f'|format(totals.predicted_total) if totals.predicted_total else '' }}" />
     </label>
-    <label class="field">
+    <fieldset class="field receipt-fields">
       <span>{{ t.receipt_photo }}</span>
-      <input type="file" name="receipt" accept="image/*" capture="environment" />
-    </label>
+      <label class="receipt-opt">{{ t.receipt_take_photo }}
+        <input type="file" name="receipt" accept="image/*" capture="environment" />
+      </label>
+      <label class="receipt-opt">{{ t.receipt_choose_file }}
+        <input type="file" name="receipt" accept="image/*" />
+      </label>
+    </fieldset>
   </form>
 </div>
 {% endif %}
