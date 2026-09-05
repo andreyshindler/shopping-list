@@ -18,6 +18,7 @@ CATEGORY_LABELS: dict[str, dict[str, str]] = {
         "Meat & Fish": "בשר ודגים",
         "Bakery": "מאפים",
         "Pantry": "מזווה",
+        "Canned": "שימורים",
         "Frozen": "קפואים",
         "Chilled": "מצוננים",
         "Beverages": "משקאות",
