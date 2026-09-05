@@ -28,7 +28,7 @@ def test_create_list_categorizes_and_no_prices_first_time(session):
     cats = {i.raw_name: i.category for i in sl.items}
     assert cats["milk"] == "Dairy & Eggs"
     assert cats["bread"] == "Bakery"
-    assert cats["tomatoes"] == "Produce"
+    assert cats["tomatoes"] == "Vegetables"
     # No purchase history yet -> no predicted prices.
     assert all(i.predicted_price is None for i in sl.items)
     assert sl.predicted_total == 0.0

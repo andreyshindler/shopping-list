@@ -7,8 +7,11 @@ from app.pricing import normalize_name
 @pytest.mark.parametrize(
     "name,expected",
     [
-        ("tomato", "Produce"),
-        ("tomatoes", "Produce"),
+        ("tomato", "Vegetables"),
+        ("tomatoes", "Vegetables"),
+        ("cucumber", "Vegetables"),
+        ("apple", "Fruit"),
+        ("banana", "Fruit"),
         ("milk", "Dairy & Eggs"),
         ("cheddar cheese", "Dairy & Eggs"),
         ("chicken breast", "Meat & Fish"),

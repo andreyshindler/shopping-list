@@ -57,7 +57,7 @@ def variant_category(product: GlobalProduct) -> str:
     tokens = _tokens(product.name)
     if tokens:
         head = categorize(tokens[0])
-        if head not in ("Produce", "Other"):
+        if head not in ("Vegetables", "Fruit", "Produce", "Other"):
             return head
     return categorize(product.normalized_name)
 
