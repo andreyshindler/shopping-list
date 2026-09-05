@@ -1,7 +1,8 @@
-import cv2
-import numpy as np
+from io import BytesIO
+
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -14,10 +15,9 @@ from app.web.main import app
 
 def _image_bytes() -> bytes:
     """A small but real PNG (decodable by the server's image pipeline)."""
-    img = np.full((60, 40, 3), 210, np.uint8)
-    ok, buf = cv2.imencode(".png", img)
-    assert ok
-    return buf.tobytes()
+    buf = BytesIO()
+    Image.new("RGB", (40, 60), (210, 210, 210)).save(buf, format="PNG")
+    return buf.getvalue()
 
 
 IMG = _image_bytes()
