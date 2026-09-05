@@ -85,6 +85,21 @@ def test_upload_receipt_after_completion(client):
     assert client.get(f"/list/{token}/receipt").content == PNG
 
 
+def test_two_inputs_picks_the_filled_one(client):
+    # The page sends two "receipt" fields (take-photo + choose-file); only one is
+    # filled. The server must pick whichever carries a file.
+    token = _seed(client)
+    r = client.post(
+        f"/api/lists/{token}/receipt",
+        files=[
+            ("receipt", ("", b"", "application/octet-stream")),  # empty camera input
+            ("receipt", ("r.png", PNG, "image/png")),           # chosen file
+        ],
+    )
+    assert r.status_code == 303
+    assert client.get(f"/list/{token}/receipt").content == PNG
+
+
 def test_reject_non_image(client):
     token = _seed(client)
     r = client.post(

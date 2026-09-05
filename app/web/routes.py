@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -50,8 +50,20 @@ def _get_list(session: Session, token: str) -> ShoppingList:
 
 
 # Receipt photos are stored in the DB (bytea); cap the size so a stray large upload
-# can't bloat the row / response.
-MAX_RECEIPT_BYTES = 10 * 1024 * 1024  # 10 MB
+# can't bloat the row / response. Phone photos are usually a few MB.
+MAX_RECEIPT_BYTES = 20 * 1024 * 1024  # 20 MB
+
+
+def _pick_upload(form):
+    """The first non-empty file among the form's ``receipt`` fields.
+
+    The page offers two inputs (take-photo and choose-file), both named ``receipt``;
+    only one is filled, so pick whichever carries a file.
+    """
+    for value in form.getlist("receipt"):
+        if getattr(value, "filename", ""):
+            return value
+    return None
 
 
 async def _read_receipt(upload) -> tuple[bytes, str] | None:
@@ -228,7 +240,7 @@ async def api_complete_list(
                 continue
     complete_list(session, sl, real_total, item_prices)
     # An optional receipt photo may ride along in the same multipart form.
-    stored = await _read_receipt(form.get("receipt"))
+    stored = await _read_receipt(_pick_upload(form))
     if stored:
         sl.receipt_image, sl.receipt_mime = stored
     session.commit()
@@ -238,12 +250,13 @@ async def api_complete_list(
 @router.post("/api/lists/{token}/receipt")
 async def api_upload_receipt(
     token: str,
-    receipt: UploadFile = File(...),
+    request: Request,
     session: Session = Depends(get_session),
 ):
     """Attach or replace a list's receipt photo (used after the list is completed)."""
     sl = _get_list(session, token)
-    stored = await _read_receipt(receipt)
+    form = await request.form()
+    stored = await _read_receipt(_pick_upload(form))
     if stored:
         sl.receipt_image, sl.receipt_mime = stored
         session.commit()

@@ -203,6 +203,10 @@ button.variant.add:hover { background: #d7eed9; }
   margin: 12px 0;
 }
 .receipt-form { margin-top: 8px; }
+.receipt-fields { border: 0; padding: 0; margin: 0 0 12px; }
+.receipt-fields > span { display: block; margin-bottom: 6px; }
+.receipt-opt { display: block; margin-bottom: 8px; font-size: 0.9rem; }
+.receipt-opt input[type="file"] { display: block; margin-top: 4px; }
 
 label.field { display: block; margin-bottom: 12px; }
 label.field span { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 4px; }
