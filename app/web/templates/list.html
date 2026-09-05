@@ -210,4 +210,52 @@
   });
 })();
 </script>
+
+<script>
+// Receipt upload with on-screen diagnostics. The plain multipart form-post can silently
+// fail inside the Telegram webview, so we submit via fetch and show exactly what happens:
+// whether a file was actually selected, its size/type, and the server's response.
+(function () {
+  var forms = document.querySelectorAll("form.receipt-form, form#complete-form");
+  Array.prototype.forEach.call(forms, function (form) {
+    var inputs = form.querySelectorAll('input[type="file"][name="receipt"]');
+    if (!inputs.length) return;
+
+    var status = document.createElement("div");
+    status.className = "receipt-status";
+    status.setAttribute("aria-live", "polite");
+    form.appendChild(status);
+    var show = function (msg) { status.textContent = msg; };
+
+    var picked = function () {
+      for (var i = 0; i < inputs.length; i++) {
+        if (inputs[i].files && inputs[i].files[0]) return inputs[i].files[0];
+      }
+      return null;
+    };
+
+    Array.prototype.forEach.call(inputs, function (inp) {
+      inp.addEventListener("change", function () {
+        var f = picked();
+        show(f ? ("✓ " + f.name + " · " + Math.round(f.size / 1024) + " KB · " + (f.type || "?"))
+               : "⚠️ לא נבחר קובץ / no file");
+      });
+    });
+
+    form.addEventListener("submit", function (e) {
+      var f = picked();
+      if (!f) return;  // total-only save -> let the normal submit proceed
+      e.preventDefault();
+      show("⏳ מעלה " + Math.round(f.size / 1024) + " KB…");
+      var fd = new FormData(form);
+      fetch(form.action, { method: "POST", body: fd })
+        .then(function (r) {
+          if (r.ok || r.redirected) { window.location = location.pathname; return; }
+          show("❌ שגיאת שרת " + r.status);
+        })
+        .catch(function (err) { show("❌ " + (err && err.message ? err.message : err)); });
+    });
+  });
+})();
+</script>
 {% endblock %}
