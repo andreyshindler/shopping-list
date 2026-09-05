@@ -1,23 +1,28 @@
 """Best-effort automatic cropping of an uploaded receipt photo (Pillow-based).
 
-A receipt is a bright region on a darker background. We threshold to that bright region,
-take the bounding box of the bright pixels, and crop to it — a plain rectangular crop, no
-perspective correction. Everything is guarded and memory-frugal (big JPEGs are decoded at a
-reduced size via ``Image.draft``), so a huge phone photo can't hang or OOM the request. On
-any failure, or when detection isn't confident, the (normalized) image is returned so an
-upload is never broken.
+A receipt is a bright region on a darker background. We pick an adaptive brightness
+threshold per photo (Otsu), then find the longest contiguous run of rows and of columns
+that are *mostly* bright — the receipt — and crop to that rectangle (no perspective
+correction). Working from bright *fractions* per row/column, and taking the longest run,
+ignores sparse specks and separate bright blobs (a floor tile, a hand). Everything is
+guarded and memory-frugal (big JPEGs are decoded at a reduced size via ``Image.draft``),
+so a huge phone photo can't hang or OOM the request. On any failure, or when detection
+isn't confident, the (normalized) image is returned so an upload is never broken.
 """
 
 from __future__ import annotations
 
 from io import BytesIO
 
-# Analysis is done on a downscaled copy; the crop is applied to the (still downscaled) image.
-_ANALYZE_MAX = 1000
+# Analysis is done on a downscaled copy; the crop is applied to the full (normalized) image.
+_ANALYZE_MAX = 600
 _OUTPUT_MAX = 2000
 _JPEG_QUALITY = 85
 _PADDING_FRAC = 0.02
-_BRIGHT_THRESHOLD = 220  # receipts are near-white; high enough to exclude a light floor/couch
+# A row/column counts as "receipt" when at least this fraction of its pixels are bright
+# (above the adaptive Otsu threshold). Using a fraction — not any single bright pixel —
+# ignores sparse specks (a hand, a floor tile) that would otherwise inflate the box.
+_LINE_FRAC = 0.12
 
 # Confidence gates: the detected box must be a plausible receipt, and cropping must
 # actually remove a meaningful margin — otherwise keep the whole (normalized) image.
@@ -97,24 +102,95 @@ def process_receipt(data: bytes) -> tuple[bytes, str] | None:
         return data, _sniff_mime(data)
 
 
+def _otsu_threshold(gray) -> int:
+    """Otsu's method: the grayscale value that best splits dark bg from bright receipt.
+
+    Adaptive per-photo (unlike a fixed threshold), so it works in bright or dim lighting.
+    """
+    hist = gray.histogram()[:256]
+    total = sum(hist)
+    if total == 0:
+        return 127
+    sum_all = sum(i * hist[i] for i in range(256))
+    w_b = 0
+    sum_b = 0
+    best_var = -1.0
+    thr = 127
+    for i in range(256):
+        w_b += hist[i]
+        if w_b == 0:
+            continue
+        w_f = total - w_b
+        if w_f == 0:
+            break
+        sum_b += i * hist[i]
+        m_b = sum_b / w_b
+        m_f = (sum_all - sum_b) / w_f
+        between = w_b * w_f * (m_b - m_f) ** 2
+        if between > best_var:
+            best_var = between
+            thr = i
+    return thr
+
+
+def _longest_run(values, cutoff, max_gap):
+    """Longest run of consecutive indices with value > cutoff (inclusive), or None.
+
+    Small dips (gaps up to ``max_gap``, e.g. blank bands on the receipt) don't break a run,
+    but a large low stretch does — so a separate bright blob (a floor tile, a hand) forms
+    its own shorter run and loses to the receipt's.
+    """
+    best = None
+    best_len = 0
+    start = last = None
+    for i, v in enumerate(values):
+        if v > cutoff:
+            if start is None:
+                start = i
+            last = i
+        elif start is not None and (i - last) > max_gap:
+            if last - start + 1 > best_len:
+                best_len = last - start + 1
+                best = (start, last)
+            start = last = None
+    if start is not None and last - start + 1 > best_len:
+        best = (start, last)
+    return best
+
+
 def _detect_receipt_box(img, Image):
-    """Bounding box ``(l, t, r, b)`` of the receipt in full-image coords, or None."""
+    """Bounding box ``(l, t, r, b)`` of the receipt in full-image coords, or None.
+
+    Adaptive threshold (Otsu) → bright mask → per-row/column bright-fraction projection
+    (via BOX-resize to a 1px strip) → the span of rows/columns that are mostly receipt.
+    The fraction test ignores sparse bright specks that a raw pixel bounding box would catch.
+    """
     W, H = img.size
     small = img.copy()
     small.thumbnail((_ANALYZE_MAX, _ANALYZE_MAX))
     sw, sh = small.size
 
-    mask = small.convert("L").point(lambda p: 255 if p > _BRIGHT_THRESHOLD else 0)
-    bbox = mask.getbbox()  # (l, t, r, b) of non-zero (bright) pixels, or None
-    if bbox is None:
-        return None
+    gray = small.convert("L")
+    thr = _otsu_threshold(gray)
+    mask = gray.point(lambda p: 255 if p > thr else 0)
 
-    l, t, r, b = bbox
-    area_frac = ((r - l) * (b - t)) / float(sw * sh)
-    if area_frac < _MIN_AREA_FRAC or area_frac > (1.0 - _MIN_REDUCTION):
-        return None  # too small, or wouldn't remove enough to bother
-    if area_frac > _MAX_AREA_FRAC:
+    # Average brightness per row / per column (0..255) == bright-fraction * 255.
+    rows = list(mask.resize((1, sh), Image.BOX).getdata())
+    cols = list(mask.resize((sw, 1), Image.BOX).getdata())
+    cutoff = _LINE_FRAC * 255
+
+    vspan = _longest_run(rows, cutoff, max(2, int(sh * 0.03)))
+    hspan = _longest_run(cols, cutoff, max(2, int(sw * 0.03)))
+    if vspan is None or hspan is None:
         return None
+    t, b = vspan[0], vspan[1] + 1
+    l, r = hspan[0], hspan[1] + 1
+
+    area_frac = ((r - l) * (b - t)) / float(sw * sh)
+    if area_frac < _MIN_AREA_FRAC or area_frac > _MAX_AREA_FRAC:
+        return None
+    if area_frac > (1.0 - _MIN_REDUCTION):
+        return None  # wouldn't remove enough to bother
 
     pad = int(round(max(sw, sh) * _PADDING_FRAC))
     l = max(0, l - pad)
@@ -122,6 +198,5 @@ def _detect_receipt_box(img, Image):
     r = min(sw, r + pad)
     b = min(sh, b + pad)
 
-    # Map back to full-resolution coordinates.
     fx, fy = W / sw, H / sh
     return (int(l * fx), int(t * fy), int(r * fx), int(b * fy))
