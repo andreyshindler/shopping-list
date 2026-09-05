@@ -173,6 +173,7 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
         "מלפפון במלח", "מלפפונים במלח", "עגבניה במלח", "עגבניות במלח",
         "סלמון שימורים", "סלמונים שימורים",
         "מלפפון בחוץ", "מלפפונים בחוץ",
+        "מלפפון בחומץ", "מלפפונים בחומץ",
     ],
     "Frozen": [
         "frozen", "frozen pizza", "pizza", "mixed vegetables", "frozen corn",

@@ -27,6 +27,8 @@ from app.pricing import normalize_name
         ("מלפפון בחוץ", "Pantry"),
         ("מלפפונים בחוץ", "Pantry"),  # plural form
         ("עגבניה במלח", "Pantry"),  # singular form (was missing before)
+        ("מלפפון בחומץ", "Pantry"),  # "בחוץ" was a mis-transcription of "בחומץ"
+        ("מלפפונים בחומץ", "Pantry"),  # plural form
         ("מלפפון", "Vegetables"),  # ...but plain cucumber is unaffected
         ("frozen pizza", "Frozen"),
         ("orange juice", "Beverages"),
