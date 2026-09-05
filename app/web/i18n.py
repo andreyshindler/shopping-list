@@ -22,6 +22,7 @@ CATEGORY_LABELS: dict[str, dict[str, str]] = {
         "Chilled": "מצוננים",
         "Beverages": "משקאות",
         "Snacks": "חטיפים",
+        "Sweets": "מתוקים",
         "Household": "מוצרי בית",
         "Personal Care": "טיפוח",
         "Baby & Kids": "תינוק וילדים",
