@@ -18,8 +18,8 @@ from app.pricing import normalize_name
         ("salmon", "Meat & Fish"),
         ("bread", "Bakery"),
         ("rice", "Pantry"),
-        ("מלפפון במלח", "Canned"),
-        ("תירס שימורים", "Canned"),
+        ("מלפפון במלח", "Pantry"),
+        ("תירס שימורים", "Pantry"),
         ("טונה שימורים", "Meat & Fish"),  # strong head noun wins over "שימורים"
         ("frozen pizza", "Frozen"),
         ("orange juice", "Beverages"),

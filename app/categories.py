@@ -13,7 +13,6 @@ CATEGORY_ORDER: list[str] = [
     "Meat & Fish",
     "Bakery",
     "Pantry",
-    "Canned",
     "Frozen",
     "Chilled",
     "Beverages",
@@ -165,13 +164,11 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
         "קקאו", "שמרים", "אבקת אפייה", "וניל", "שוקולד אפייה", "גרנולה", "קוורקר",
         "קורנפלקס", "סירופ מייפל", "חמאת בוטנים", "חמאת שקדים", "קוסקוס", "פתיתים",
         "תבלין", "תבלינים",
-    ],
-    "Canned": [
-        # Canned/preserved goods sold by the unit. The bare "שימורים" catches any
-        # "<product> שימורים" name (e.g. תירס שימורים, פטריות שימורים); the "במלח"
-        # phrases catch pickled/brined items.
-        "מלפפון במלח", "עגבניות במלח",
-        "שימורים", "חמוצים",
+        # Canned/preserved goods live in the pantry. The bare "שימורים" catches any
+        # "<product> שימורים" name (תירס שימורים, פטריות שימורים); the "במלח" phrases and
+        # "חמוצים" catch pickled/brined items. (A strong head noun still wins, e.g.
+        # "טונה שימורים" -> Meat & Fish.)
+        "שימורים", "חמוצים", "מלפפון במלח", "עגבניות במלח",
     ],
     "Frozen": [
         "frozen", "frozen pizza", "pizza", "mixed vegetables", "frozen corn",
