@@ -12,6 +12,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    LargeBinary,
     String,
     UniqueConstraint,
     func,
@@ -60,6 +61,10 @@ class ShoppingList(Base):
     is_draft: Mapped[bool] = mapped_column(Boolean, default=True, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # A photo of the paper receipt, stored in the DB (the only durable store — the
+    # container's filesystem is ephemeral). Optional; attached at/after completion.
+    receipt_image: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    receipt_mime: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     user: Mapped[User] = relationship(back_populates="lists")
     items: Mapped[list[Item]] = relationship(
@@ -67,6 +72,10 @@ class ShoppingList(Base):
         cascade="all, delete-orphan",
         order_by="Item.sort_order",
     )
+
+    @property
+    def has_receipt(self) -> bool:
+        return self.receipt_image is not None
 
 
 class Item(Base):

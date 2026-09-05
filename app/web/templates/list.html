@@ -33,6 +33,19 @@
 <div class="complete-card">
   <h2>{{ t.completed }}</h2>
   <p>{{ t.real_total_spent }}: <strong>{{ money(list.real_total or 0) }}</strong></p>
+  {% if list.has_receipt %}
+  <a href="/list/{{ list.web_token }}/receipt" target="_blank" rel="noopener">
+    <img class="receipt-img" src="/list/{{ list.web_token }}/receipt" alt="{{ t.receipt_photo }}" />
+  </a>
+  {% endif %}
+  <form method="post" action="/api/lists/{{ list.web_token }}/receipt"
+        enctype="multipart/form-data" class="receipt-form">
+    <label class="field">
+      <span>{{ t.replace_receipt if list.has_receipt else t.add_receipt }}</span>
+      <input type="file" name="receipt" accept="image/*" capture="environment" required />
+    </label>
+    <button type="submit" class="secondary">{{ t.save_receipt }}</button>
+  </form>
 </div>
 {% endif %}
 
@@ -124,7 +137,8 @@
 <div class="complete-card">
   <h2>{{ t.all_done }}</h2>
   <p>{{ t.enter_paid }}</p>
-  <form id="complete-form" method="post" action="/api/lists/{{ list.web_token }}/complete">
+  <form id="complete-form" method="post" action="/api/lists/{{ list.web_token }}/complete"
+        enctype="multipart/form-data">
     {% for item in bought %}
     <label class="field">
       <span>{{ item.raw_name }}{% if item.weighed %} ({{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }} {{ t.unit_kg }}){% elif item.quantity != 1 %} (×{{ item.quantity|int if item.quantity == item.quantity|int else item.quantity }}){% endif %}</span>
@@ -136,6 +150,10 @@
       <span>{{ t.total_paid }} ({{ currency }})</span>
       <input type="number" step="0.01" min="0" name="real_total" required
              value="{{ '%.2f'|format(totals.predicted_total) if totals.predicted_total else '' }}" />
+    </label>
+    <label class="field">
+      <span>{{ t.receipt_photo }}</span>
+      <input type="file" name="receipt" accept="image/*" capture="environment" />
     </label>
   </form>
 </div>
