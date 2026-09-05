@@ -23,6 +23,7 @@ _PADDING_FRAC = 0.02
 # (above the adaptive Otsu threshold). Using a fraction — not any single bright pixel —
 # ignores sparse specks (a hand, a floor tile) that would otherwise inflate the box.
 _LINE_FRAC = 0.12
+_MIN_DESKEW_DEG = 3  # don't bother rotating for a nearly-straight receipt
 
 # Confidence gates: the detected box must be a plausible receipt, and cropping must
 # actually remove a meaningful margin — otherwise keep the whole (normalized) image.
@@ -89,8 +90,13 @@ def process_receipt(data: bytes) -> tuple[bytes, str] | None:
     except Exception:
         return None  # not a decodable image -> caller stores nothing
 
-    # Crop + re-encode. If anything here fails, fall back to the original bytes.
+    # Deskew (straighten a tilted receipt) then crop + re-encode. If anything here fails,
+    # fall back to the original bytes.
     try:
+        angle = _deskew_angle(img, Image)
+        if abs(angle) >= _MIN_DESKEW_DEG:
+            # Black fill so the added corners read as background to the re-detection below.
+            img = img.rotate(angle, expand=True, resample=Image.BICUBIC, fillcolor=(0, 0, 0))
         box = _detect_receipt_box(img, Image)
         if box is not None:
             img = img.crop(box)
@@ -158,33 +164,40 @@ def _longest_run(values, cutoff, max_gap):
     return best
 
 
-def _detect_receipt_box(img, Image):
-    """Bounding box ``(l, t, r, b)`` of the receipt in full-image coords, or None.
-
-    Adaptive threshold (Otsu) → bright mask → per-row/column bright-fraction projection
-    (via BOX-resize to a 1px strip) → the span of rows/columns that are mostly receipt.
-    The fraction test ignores sparse bright specks that a raw pixel bounding box would catch.
-    """
-    W, H = img.size
+def _receipt_mask(img, Image):
+    """Downscaled Otsu bright mask of ``img``; returns (mask, small_w, small_h)."""
     small = img.copy()
     small.thumbnail((_ANALYZE_MAX, _ANALYZE_MAX))
     sw, sh = small.size
-
     gray = small.convert("L")
     thr = _otsu_threshold(gray)
-    mask = gray.point(lambda p: 255 if p > thr else 0)
+    return gray.point(lambda p: 255 if p > thr else 0), sw, sh
 
-    # Average brightness per row / per column (0..255) == bright-fraction * 255.
+
+def _rough_span(mask, sw, sh, Image):
+    """Receipt box (l, t, r, b) in mask coords via per-row/column bright-fraction runs."""
     rows = list(mask.resize((1, sh), Image.BOX).getdata())
     cols = list(mask.resize((sw, 1), Image.BOX).getdata())
     cutoff = _LINE_FRAC * 255
-
     vspan = _longest_run(rows, cutoff, max(2, int(sh * 0.03)))
     hspan = _longest_run(cols, cutoff, max(2, int(sw * 0.03)))
     if vspan is None or hspan is None:
         return None
-    t, b = vspan[0], vspan[1] + 1
-    l, r = hspan[0], hspan[1] + 1
+    return (hspan[0], vspan[0], hspan[1] + 1, vspan[1] + 1)
+
+
+def _detect_receipt_box(img, Image):
+    """Bounding box ``(l, t, r, b)`` of the receipt in full-image coords, or None.
+
+    Adaptive threshold (Otsu) → bright mask → per-row/column bright-fraction projection →
+    the longest run of rows/columns that are mostly receipt. Ignores sparse specks.
+    """
+    W, H = img.size
+    mask, sw, sh = _receipt_mask(img, Image)
+    span = _rough_span(mask, sw, sh, Image)
+    if span is None:
+        return None
+    l, t, r, b = span
 
     area_frac = ((r - l) * (b - t)) / float(sw * sh)
     if area_frac < _MIN_AREA_FRAC or area_frac > _MAX_AREA_FRAC:
@@ -200,3 +213,37 @@ def _detect_receipt_box(img, Image):
 
     fx, fy = W / sw, H / sh
     return (int(l * fx), int(t * fy), int(r * fx), int(b * fy))
+
+
+def _deskew_angle(img, Image):
+    """Degrees to rotate ``img`` (as ``Image.rotate``) so the receipt becomes upright, or 0.
+
+    Brute-force minimum-area rectangle: rotate the (rough-cropped) bright mask through a
+    range of angles and keep the one whose bright bounding box is smallest — that's when the
+    receipt's edges line up with the axes. Self-consistent (we apply the same rotation we
+    searched), so there's no sign ambiguity.
+    """
+    mask, sw, sh = _receipt_mask(img, Image)
+    span = _rough_span(mask, sw, sh, Image)
+    if span is None:
+        return 0.0
+    mr = mask.crop(span)
+    if mr.width < 12 or mr.height < 12:
+        return 0.0
+
+    def area_at(a):
+        r = mr.rotate(a, expand=True, resample=Image.NEAREST, fillcolor=0) if a else mr
+        bb = r.getbbox()
+        return None if bb is None else (bb[2] - bb[0]) * (bb[3] - bb[1])
+
+    best_a = 0.0
+    best_area = area_at(0.0)
+    for a in range(-45, 46, 5):
+        ar = area_at(a)
+        if ar is not None and (best_area is None or ar < best_area):
+            best_area, best_a = ar, float(a)
+    for a in (best_a + d for d in (-4, -3, -2, -1, 1, 2, 3, 4)):
+        ar = area_at(a)
+        if ar is not None and (best_area is None or ar < best_area):
+            best_area, best_a = ar, a
+    return best_a
