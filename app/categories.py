@@ -13,6 +13,7 @@ CATEGORY_ORDER: list[str] = [
     "Meat & Fish",
     "Bakery",
     "Pantry",
+    "Canned",
     "Frozen",
     "Chilled",
     "Beverages",
@@ -37,7 +38,7 @@ NON_WEIGHED_TERMS: set[str] = {
     "חסה", "חסה שטופה", "כוסברה", "עירית", "עירת", "כרובית",
     "צנון", "צנונית", "עגבניות שרי",
     "עגבניות במלח", "פטריות שימורים",
-    "שמיר ארוז", "תירס שימורים", "בצל ירוק",
+    "שמיר ארוז", "תירס שימורים", "בצל ירוק", "מלפפון במלח",
 }
 
 # Sold both ways: the user picks kilograms or units in the web picker. The pick is
@@ -164,6 +165,13 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
         "קקאו", "שמרים", "אבקת אפייה", "וניל", "שוקולד אפייה", "גרנולה", "קוורקר",
         "קורנפלקס", "סירופ מייפל", "חמאת בוטנים", "חמאת שקדים", "קוסקוס", "פתיתים",
         "תבלין", "תבלינים",
+    ],
+    "Canned": [
+        # Canned/preserved goods sold by the unit. The bare "שימורים" catches any
+        # "<product> שימורים" name (e.g. תירס שימורים, פטריות שימורים); the "במלח"
+        # phrases catch pickled/brined items.
+        "מלפפון במלח", "עגבניות במלח",
+        "שימורים", "חמוצים",
     ],
     "Frozen": [
         "frozen", "frozen pizza", "pizza", "mixed vegetables", "frozen corn",
