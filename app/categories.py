@@ -169,8 +169,10 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
         # "<product> שימורים" name (תירס שימורים, פטריות שימורים); the "במלח" phrases and
         # "חמוצים" catch pickled/brined items. (A strong head noun still wins, e.g.
         # "טונה שימורים" -> Meat & Fish — "סלמון שימורים" is a specific override below.)
-        "שימורים", "חמוצים", "מלפפון במלח", "עגבניות במלח",
-        "סלמון שימורים", "מלפפון בחוץ",
+        "שימורים", "חמוצים",
+        "מלפפון במלח", "מלפפונים במלח", "עגבניה במלח", "עגבניות במלח",
+        "סלמון שימורים", "סלמונים שימורים",
+        "מלפפון בחוץ", "מלפפונים בחוץ",
     ],
     "Frozen": [
         "frozen", "frozen pizza", "pizza", "mixed vegetables", "frozen corn",

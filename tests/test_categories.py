@@ -22,8 +22,11 @@ from app.pricing import normalize_name
         ("תירס שימורים", "Pantry"),
         ("טונה שימורים", "Meat & Fish"),  # strong head noun wins over "שימורים"
         ("סלמון שימורים", "Pantry"),  # explicit override beats the strong head noun
+        ("סלמונים שימורים", "Pantry"),  # plural form
         ("סלמון", "Meat & Fish"),  # ...but plain salmon is unaffected
         ("מלפפון בחוץ", "Pantry"),
+        ("מלפפונים בחוץ", "Pantry"),  # plural form
+        ("עגבניה במלח", "Pantry"),  # singular form (was missing before)
         ("מלפפון", "Vegetables"),  # ...but plain cucumber is unaffected
         ("frozen pizza", "Frozen"),
         ("orange juice", "Beverages"),
