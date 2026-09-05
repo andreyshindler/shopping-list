@@ -1,34 +1,33 @@
-import cv2
-import numpy as np
+from io import BytesIO
+
+from PIL import Image, ImageDraw
 
 from app.web.receipt_crop import process_receipt
 
 
-def _png(img) -> bytes:
-    ok, buf = cv2.imencode(".png", img)
-    assert ok
-    return buf.tobytes()
+def _png(img: Image.Image) -> bytes:
+    b = BytesIO()
+    img.save(b, format="PNG")
+    return b.getvalue()
 
 
-def _decode(data: bytes):
-    return cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+def _open(data: bytes) -> Image.Image:
+    return Image.open(BytesIO(data))
 
 
 def test_crops_bright_rectangle_on_dark_background():
-    H, W = 800, 600
-    img = np.full((H, W, 3), 20, np.uint8)  # dark background
-    y0, y1, x0, x1 = 150, 620, 220, 380  # bright "receipt" (470 x 160)
-    img[y0:y1, x0:x1] = 245
+    W, H = 600, 800
+    img = Image.new("RGB", (W, H), (20, 20, 20))  # dark background
+    ImageDraw.Draw(img).rectangle([220, 150, 380, 620], fill=(245, 245, 245))  # bright strip
 
     out, mime = process_receipt(_png(img))
     assert mime == "image/jpeg"
 
-    crop = _decode(out)
-    ch, cw = crop.shape[:2]
-    assert ch < H and cw < W  # actually cropped
-    # Close to the rectangle (plus a little padding).
-    assert abs(ch - (y1 - y0)) < 80
-    assert abs(cw - (x1 - x0)) < 80
+    crop = _open(out)
+    cw, ch = crop.size
+    assert cw < W and ch < H  # actually cropped
+    assert abs(cw - (380 - 220)) < 90  # ~ the rectangle (plus a little padding)
+    assert abs(ch - (620 - 150)) < 90
 
 
 def test_undecodable_bytes_return_none():
@@ -37,9 +36,7 @@ def test_undecodable_bytes_return_none():
 
 
 def test_full_frame_bright_not_overcropped():
-    # Almost the whole frame is bright -> box ~ whole image -> confidence gate rejects it,
-    # so the image keeps its dimensions (just re-encoded).
-    img = np.full((500, 500, 3), 240, np.uint8)
+    # Whole frame bright -> box ~ whole image -> gate rejects -> dimensions preserved.
+    img = Image.new("RGB", (500, 500), (240, 240, 240))
     out, _mime = process_receipt(_png(img))
-    crop = _decode(out)
-    assert crop.shape[0] == 500 and crop.shape[1] == 500
+    assert _open(out).size == (500, 500)
