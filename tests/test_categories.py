@@ -21,6 +21,10 @@ from app.pricing import normalize_name
         ("מלפפון במלח", "Pantry"),
         ("תירס שימורים", "Pantry"),
         ("טונה שימורים", "Meat & Fish"),  # strong head noun wins over "שימורים"
+        ("סלמון שימורים", "Pantry"),  # explicit override beats the strong head noun
+        ("סלמון", "Meat & Fish"),  # ...but plain salmon is unaffected
+        ("מלפפון בחוץ", "Pantry"),
+        ("מלפפון", "Vegetables"),  # ...but plain cucumber is unaffected
         ("frozen pizza", "Frozen"),
         ("orange juice", "Beverages"),
         ("chocolate", "Snacks"),
