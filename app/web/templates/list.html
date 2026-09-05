@@ -234,6 +234,31 @@
       return null;
     };
 
+    // Shrink the photo in the browser so it stays well under the proxy's upload limit
+    // (nginx defaults to ~1 MB). Resolves to a small JPEG Blob, or the original file if
+    // the browser can't decode it (e.g. HEIC) — then the server still gets something.
+    var shrink = function (file) {
+      return new Promise(function (resolve) {
+        var url = URL.createObjectURL(file);
+        var img = new Image();
+        img.onload = function () {
+          try {
+            var maxDim = 1600;
+            var scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+            var cw = Math.max(1, Math.round(img.naturalWidth * scale));
+            var ch = Math.max(1, Math.round(img.naturalHeight * scale));
+            var canvas = document.createElement("canvas");
+            canvas.width = cw; canvas.height = ch;
+            canvas.getContext("2d").drawImage(img, 0, 0, cw, ch);
+            URL.revokeObjectURL(url);
+            canvas.toBlob(function (blob) { resolve(blob || file); }, "image/jpeg", 0.8);
+          } catch (e) { URL.revokeObjectURL(url); resolve(file); }
+        };
+        img.onerror = function () { URL.revokeObjectURL(url); resolve(file); };
+        img.src = url;
+      });
+    };
+
     Array.prototype.forEach.call(inputs, function (inp) {
       inp.addEventListener("change", function () {
         var f = picked();
@@ -246,14 +271,16 @@
       var f = picked();
       if (!f) return;  // total-only save -> let the normal submit proceed
       e.preventDefault();
-      show("⏳ מעלה " + Math.round(f.size / 1024) + " KB…");
-      var fd = new FormData(form);
-      fetch(form.action, { method: "POST", body: fd })
-        .then(function (r) {
-          if (r.ok || r.redirected) { window.location = location.pathname; return; }
-          show("❌ שגיאת שרת " + r.status);
-        })
-        .catch(function (err) { show("❌ " + (err && err.message ? err.message : err)); });
+      show("⏳ מכין תמונה…");
+      shrink(f).then(function (blob) {
+        var fd = new FormData(form);
+        fd.set("receipt", blob, "receipt.jpg");  // replace the raw file with the small one
+        show("⏳ מעלה " + Math.round(blob.size / 1024) + " KB…");
+        return fetch(form.action, { method: "POST", body: fd });
+      }).then(function (r) {
+        if (r.ok || r.redirected) { window.location = location.pathname; return; }
+        show("❌ שגיאת שרת " + r.status);
+      }).catch(function (err) { show("❌ " + (err && err.message ? err.message : err)); });
     });
   });
 })();
