@@ -46,6 +46,24 @@ def test_heic_iphone_photo_is_decoded():
     assert _open(out).size[0] > 0
 
 
+def test_deskews_a_tilted_receipt():
+    # A long bright receipt rotated 22° on a dark background: the result should be
+    # straightened (upright/portrait) and tightly cropped, not a loose diagonal box.
+    base = Image.new("RGB", (900, 1200), (60, 60, 63))
+    receipt = Image.new("RGB", (230, 760), (240, 240, 238))
+    rd = ImageDraw.Draw(receipt)
+    for y in range(20, 760, 26):
+        rd.line([(20, y), (210, y)], fill=(60, 60, 60), width=2)
+    base.paste(receipt.rotate(22, expand=True, fillcolor=(60, 60, 63)), (330, 210))
+
+    out, mime = process_receipt(_png(base))
+    assert mime == "image/jpeg"
+    w, h = _open(out).size
+    assert h > w              # upright
+    assert h / w > 2.0        # long & narrow like the receipt (~3.3)
+    assert w * h < 900 * 1200 * 0.35  # tight — background corners removed
+
+
 def test_undecodable_bytes_return_none():
     assert process_receipt(b"\x89PNG\r\n\x1a\n definitely not an image") is None
     assert process_receipt(b"") is None
