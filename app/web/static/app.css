@@ -195,6 +195,14 @@ button.variant.add:hover { background: #d7eed9; }
   margin-top: 8px;
 }
 .complete-card h2 { margin-top: 0; }
+.receipt-img {
+  display: block;
+  max-width: 100%;
+  max-height: 320px;
+  border-radius: var(--radius);
+  margin: 12px 0;
+}
+.receipt-form { margin-top: 8px; }
 
 label.field { display: block; margin-bottom: 12px; }
 label.field span { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 4px; }

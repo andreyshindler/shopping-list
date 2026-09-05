@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from collections import OrderedDict
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -47,6 +47,30 @@ def _get_list(session: Session, token: str) -> ShoppingList:
     if sl is None:
         raise HTTPException(status_code=404, detail="List not found")
     return sl
+
+
+# Receipt photos are stored in the DB (bytea); cap the size so a stray large upload
+# can't bloat the row / response.
+MAX_RECEIPT_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
+async def _read_receipt(upload) -> tuple[bytes, str] | None:
+    """Validate and read an uploaded receipt image.
+
+    Returns ``(bytes, content_type)``, or ``None`` when the file field was left empty.
+    Raises 400/413 for a non-image or oversize upload.
+    """
+    if upload is None or not getattr(upload, "filename", ""):
+        return None  # field omitted or submitted empty
+    content_type = (getattr(upload, "content_type", None) or "").lower()
+    if not content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Receipt must be an image")
+    data = await upload.read()
+    if not data:
+        return None
+    if len(data) > MAX_RECEIPT_BYTES:
+        raise HTTPException(status_code=413, detail="Receipt too large")
+    return data, content_type
 
 
 def _get_item(session: Session, token: str, item_id: int) -> Item:
@@ -113,6 +137,15 @@ def view_list(token: str, request: Request, session: Session = Depends(get_sessi
             **i18n_context(sl.user.language, sl.web_token, "list"),
         },
     )
+
+
+@router.get("/list/{token}/receipt")
+def view_receipt(token: str, session: Session = Depends(get_session)):
+    """Serve the stored receipt photo for a list (token-guarded, like the list page)."""
+    sl = _get_list(session, token)
+    if not sl.receipt_image:
+        raise HTTPException(status_code=404, detail="No receipt")
+    return Response(content=sl.receipt_image, media_type=sl.receipt_mime or "image/jpeg")
 
 
 @router.post("/api/lists/{token}/items/{item_id}/toggle")
@@ -194,7 +227,26 @@ async def api_complete_list(
             except ValueError:
                 continue
     complete_list(session, sl, real_total, item_prices)
+    # An optional receipt photo may ride along in the same multipart form.
+    stored = await _read_receipt(form.get("receipt"))
+    if stored:
+        sl.receipt_image, sl.receipt_mime = stored
     session.commit()
+    return RedirectResponse(url=f"/list/{token}", status_code=303)
+
+
+@router.post("/api/lists/{token}/receipt")
+async def api_upload_receipt(
+    token: str,
+    receipt: UploadFile = File(...),
+    session: Session = Depends(get_session),
+):
+    """Attach or replace a list's receipt photo (used after the list is completed)."""
+    sl = _get_list(session, token)
+    stored = await _read_receipt(receipt)
+    if stored:
+        sl.receipt_image, sl.receipt_mime = stored
+        session.commit()
     return RedirectResponse(url=f"/list/{token}", status_code=303)
 
 
