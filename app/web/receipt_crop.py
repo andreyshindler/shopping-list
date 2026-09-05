@@ -26,6 +26,27 @@ _MAX_AREA_FRAC = 0.92
 _MIN_REDUCTION = 0.15  # cropped area must be <= 85% of the original
 
 
+_heif_ready = False
+
+
+def _register_heif() -> None:
+    """Register the HEIF/HEIC opener with Pillow once (iPhone photos are HEIC).
+
+    Best-effort: if pillow-heif isn't installed/usable, HEIC simply stays unsupported and
+    such an upload is skipped rather than crashing.
+    """
+    global _heif_ready
+    if _heif_ready:
+        return
+    _heif_ready = True
+    try:
+        from pillow_heif import register_heif_opener
+
+        register_heif_opener()
+    except Exception:
+        pass
+
+
 def _sniff_mime(data: bytes) -> str:
     """Best-effort image mime from magic bytes (used only when Pillow is unavailable)."""
     if data[:8] == b"\x89PNG\r\n\x1a\n":
@@ -52,6 +73,8 @@ def process_receipt(data: bytes) -> tuple[bytes, str] | None:
         from PIL import Image, ImageOps
     except Exception:
         return data, _sniff_mime(data)
+
+    _register_heif()  # let Pillow open iPhone HEIC/HEIF photos (best-effort)
 
     # Decode (forced via convert) — this is what tells us whether it's really an image.
     try:

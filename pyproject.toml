@@ -17,6 +17,7 @@ dependencies = [
     "beautifulsoup4>=4.12",
     "lxml>=5.0",
     "pillow>=10.0",
+    "pillow-heif>=0.16",
 ]
 
 [project.optional-dependencies]
