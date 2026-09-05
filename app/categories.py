@@ -33,6 +33,7 @@ WEIGHED_CATEGORIES: set[str] = {"Produce", "Meat & Fish"}
 NON_WEIGHED_TERMS: set[str] = {
     "חסה", "חסה שטופה", "כוסברה", "עירית", "עירת", "כרובית",
     "צנון", "צנונית", "עגבניות שרי",
+    "עגבניות במלח", "פטריות שימורים",
 }
 
 # Sold both ways: the user picks kilograms or units in the web picker. The pick is
