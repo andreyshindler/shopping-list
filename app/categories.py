@@ -6,7 +6,9 @@ import re
 
 # Display/sort order for categories on the web page.
 CATEGORY_ORDER: list[str] = [
-    "Produce",
+    "Vegetables",
+    "Fruit",
+    "Produce",  # legacy bucket: items categorized before Vegetables/Fruit were split out
     "Dairy & Eggs",
     "Meat & Fish",
     "Bakery",
@@ -24,7 +26,8 @@ CATEGORY_ORDER: list[str] = [
 
 # Categories priced by weight: quantity means kilograms and the learned/predicted
 # price is per-kg (vegetables, fruit, meat, fish). Everything else is per-unit.
-WEIGHED_CATEGORIES: set[str] = {"Produce", "Meat & Fish"}
+# "Produce" is kept for items stored before Vegetables/Fruit were split out.
+WEIGHED_CATEGORIES: set[str] = {"Vegetables", "Fruit", "Produce", "Meat & Fish"}
 
 # Produce sold by the unit, not by weight (a head of lettuce, a bunch of coriander,
 # a cauliflower). Overrides ``WEIGHED_CATEGORIES``. Also used to drop the catalog's
@@ -34,6 +37,7 @@ NON_WEIGHED_TERMS: set[str] = {
     "חסה", "חסה שטופה", "כוסברה", "עירית", "עירת", "כרובית",
     "צנון", "צנונית", "עגבניות שרי",
     "עגבניות במלח", "פטריות שימורים",
+    "שמיר ארוז", "תירס שימורים",
 }
 
 # Sold both ways: the user picks kilograms or units in the web picker. The pick is
@@ -62,26 +66,31 @@ DUAL_CATEGORY_TERMS: dict[str, list[str]] = {
 # and minor variations ("tomatoes", "tomato") are covered by the singular keyword.
 # Multi-word entries (with a space or hyphen) are matched as whole phrases first.
 CATEGORY_KEYWORDS: dict[str, list[str]] = {
-    "Produce": [
-        "apple", "banana", "orange", "lemon", "lime", "grape", "grapes", "berry",
-        "strawberr", "strawberry", "blueberr", "melon", "watermelon", "mango", "avocado",
+    "Vegetables": [
         "tomato", "potato", "sweet potato", "onion", "green onion", "garlic", "carrot",
         "lettuce", "romaine lettuce", "spinach", "baby spinach", "kale", "arugula",
         "cucumber", "pepper", "bell pepper", "broccoli", "cauliflower", "mushroom",
-        "mushrooms", "celery", "zucchini", "cabbage", "corn", "pear", "peach", "plum",
-        "cherry", "herb", "parsley", "cilantro", "dill", "ginger", "salad", "fruit",
-        "vegetable", "veggie", "beetroot", "beet", "radish", "leek", "clementine",
-        "pomelo", "kiwi", "pineapple", "artichoke", "dates", "eggplant",
+        "mushrooms", "celery", "zucchini", "cabbage", "corn", "herb", "parsley",
+        "cilantro", "dill", "ginger", "salad", "vegetable", "veggie", "beetroot",
+        "beet", "radish", "leek", "artichoke", "eggplant",
         # Hebrew
-        "תפוח", "תפוח עץ", "תפוחים", "בננה", "בננות", "תפוז", "תפוזים", "לימון", "לימונים",
-        "ענב", "ענבים", "תות", "תות שדה", "תותים", "אבטיח", "מלון", "מנגו", "אבוקדו",
         "עגבניה", "עגבנייה", "עגבניות", "תפוח אדמה", "בטטה", "בטטות", "בצל", "בצל ירוק",
         "שום", "גזר", "גזרים", "חסה", "תרד", "עלי תרד", "רוקט", "מלפפון", "מלפפונים",
         "פלפל", "פלפל אדום", "פלפל צהוב", "פלפל ירוק", "ברוקולי", "כרובית", "כרוב",
-        "פטריות", "סלרי", "תירס", "אגס", "אגסים", "אפרסק", "שזיף", "דובדבן", "דובדבנים",
-        "פטרוזיליה", "כוסברה", "שמיר", "ג'ינג'ר", "סלט", "ירקות", "פירות", "חציל",
-        "קישוא", "קישואים", "סלק", "צנון", "צנונית", "כרישה", "קלמנטינה", "פומלית", "קיווי",
-        "אננס", "ארטישוק", "תמר", "קולורבי", "עירית", "עירת",
+        "פטריות", "סלרי", "תירס", "פטרוזיליה", "כוסברה", "שמיר", "ג'ינג'ר", "סלט", "ירקות",
+        "חציל", "קישוא", "קישואים", "סלק", "צנון", "צנונית", "כרישה", "ארטישוק",
+        "קולורבי", "עירית", "עירת",
+    ],
+    "Fruit": [
+        "apple", "banana", "orange", "lemon", "lime", "grape", "grapes", "berry",
+        "strawberr", "strawberry", "blueberr", "melon", "watermelon", "mango", "avocado",
+        "pear", "peach", "plum", "cherry", "fruit", "clementine", "pomelo", "kiwi",
+        "pineapple", "dates",
+        # Hebrew
+        "תפוח", "תפוח עץ", "תפוחים", "בננה", "בננות", "תפוז", "תפוזים", "לימון", "לימונים",
+        "ענב", "ענבים", "תות", "תות שדה", "תותים", "אבטיח", "מלון", "מנגו", "אבוקדו",
+        "אגס", "אגסים", "אפרסק", "שזיף", "דובדבן", "דובדבנים", "פירות", "קלמנטינה",
+        "פומלית", "קיווי", "אננס", "תמר",
     ],
     "Dairy & Eggs": [
         "milk", "whole milk", "skim milk", "lactose-free milk", "oat milk", "almond milk",
@@ -98,6 +107,7 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
         "מסקרפונה", "פטה", "אשל", "גבינת", "מילקי",
         "שוקו", "ריוויון", "מוקצף",
         "קוטז", "צפתית", "סיזיקי", "צזיקי",
+        "לורפק", "ממרח לורפק", "דניאלה", "סקוויזי גמדים",
     ],
     "Meat & Fish": [
         "chicken", "chicken breast", "ground chicken", "ground beef", "beef",
@@ -114,7 +124,7 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
         "כבד", "נקניק", "נקניקיות", "נקניקיות עוף", "נקניקיות בקר", "קבב", "המבורגר",
         "קורנדביף", "בייקון", "סלמון", "דג דניס", "דניס", "פילה בקלה", "בקלה", "טונה",
         "טונה טרייה", "שרימפס", "אמנון", "הליבוט", "סרדינים", "דג", "דגים", "בשר",
-        "חזיר", "הודו", "סטייק", "שניצל", "איקרה",
+        "חזיר", "הודו", "סטייק", "שניצל", "שניצלון", "שניצלונים", "איקרה",
     ],
     "Bakery": [
         "bread", "white bread", "whole wheat bread", "sourdough bread", "sourdough",
@@ -166,7 +176,7 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
         # Hebrew
         "קפוא", "קפואה", "קפואים", "פיצה קפואה", "פיצה", "ירקות מעורבים", "תירס קפוא",
         "אפונה", "אפונה קפואה", "שעועית ירוקה קפואה", "ברוקולי קפוא", "גלידה", "גלידת", "גלידת וניל",
-        "גלידת שוקולד", "ארטיק", "שניצלון", "פינגר", "כדורי עוף", "כדורי בשר", "בורגר קפוא",
+        "גלידת שוקולד", "ארטיק", "פינגר", "כדורי עוף", "כדורי בשר", "בורגר קפוא",
         "דג קפוא", "שרימפס קפוא", "פילו קפוא", "בצק עלים", "מרק קפוא", "אדמאמה", "קרפ קפוא",
         "וופל קפוא", "צ'יפס קפוא", "בוריטו קפוא",
         "מלוואח", "מלאווח", "ג'חנון", "גחנון",
@@ -318,7 +328,7 @@ def categorize(normalized_name: str) -> str:
     if words and not words[0].isascii():
         for keyword, category in _WORD_KEYWORDS:
             if words[0] == keyword:
-                if category not in ("Produce", "Other"):
+                if category not in ("Vegetables", "Fruit", "Produce", "Other"):
                     return category
                 break  # weak match on first word; fall through to right-to-left
 

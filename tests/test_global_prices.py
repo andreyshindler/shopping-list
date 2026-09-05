@@ -86,8 +86,8 @@ def test_create_list_groups_suggestions_by_category(session):
     user = get_or_create_user(session, 7, "T", "ILS")
     sl = create_list_from_text(session, user, "פלפל")
     by_cat = {s.name: s.category for s in sl.items[0].suggestions}
-    # Fresh peppers -> Produce, chips (head word) -> Snacks, black pepper phrase -> Pantry.
-    assert by_cat["פלפל אדום"] == "Produce"
+    # Fresh peppers -> Vegetables, chips (head word) -> Snacks, black pepper phrase -> Pantry.
+    assert by_cat["פלפל אדום"] == "Vegetables"
     assert by_cat["ציפס פלפל צילי"] == "Snacks"
     assert by_cat["פלפל שחור טחון בשקית"] == "Pantry"
 

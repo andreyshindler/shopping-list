@@ -22,10 +22,15 @@ def session():
 
 
 def test_is_weighed():
-    assert is_weighed("Produce")
+    assert is_weighed("Vegetables")
+    assert is_weighed("Fruit")
+    assert is_weighed("Produce")  # legacy category, still weighed
     assert is_weighed("Meat & Fish")
     assert not is_weighed("Pantry")
     assert not is_weighed("Dairy & Eggs")
+    # A per-unit override wins over its (weighed) category.
+    assert not is_weighed("Vegetables", "שמיר ארוז")
+    assert not is_weighed("Vegetables", "תירס שימורים")
 
 
 def test_complete_stores_per_kg_and_predicts_line_total(session):

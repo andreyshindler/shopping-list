@@ -11,6 +11,8 @@ SUPPORTED_LANGS = ("he", "en")
 CATEGORY_LABELS: dict[str, dict[str, str]] = {
     "en": {category: category for category in CATEGORY_ORDER},
     "he": {
+        "Vegetables": "ירקות",
+        "Fruit": "פירות",
         "Produce": "פירות וירקות",
         "Dairy & Eggs": "חלב וביצים",
         "Meat & Fish": "בשר ודגים",
