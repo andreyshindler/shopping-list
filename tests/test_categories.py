@@ -42,6 +42,8 @@ from app.pricing import normalize_name
         ("סניקרס", "Snacks"),  # other Snacks are unaffected by moving קינדר out
         ("כוסות נייר", "Disposables"),
         ("כוס נייר", "Disposables"),
+        ("בורקס", "Bakery"),
+        ("בורקסים", "Bakery"),
         ("toilet paper", "Household"),
         ("paper towel", "Household"),  # unaffected by the new Disposables category
         ("toothpaste", "Personal Care"),
