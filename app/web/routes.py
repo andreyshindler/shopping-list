@@ -104,12 +104,27 @@ def _get_item(session: Session, token: str, item_id: int) -> Item:
 
 
 def _grouped_items(shopping_list: ShoppingList) -> "OrderedDict[str, list[Item]]":
-    """Group not-yet-bought items by category in display order."""
+    """Group not-yet-bought items by category in display order.
+
+    An item's category is stored once at creation time. If a category is later renamed or
+    removed from CATEGORY_ORDER (as happened when "Canned" was folded into Pantry), an item
+    still holding that old value would otherwise match no bucket here and silently vanish
+    from the page — never shown, never markable — while still counting toward total_count.
+    Fold anything not in CATEGORY_ORDER into "Other" (always the last bucket) instead.
+    """
+    known = set(CATEGORY_ORDER)
     groups: OrderedDict[str, list[Item]] = OrderedDict()
     for category in CATEGORY_ORDER:
-        members = [
-            i for i in shopping_list.items if not i.is_bought and i.category == category
-        ]
+        if category == "Other":
+            members = [
+                i
+                for i in shopping_list.items
+                if not i.is_bought and (i.category == category or i.category not in known)
+            ]
+        else:
+            members = [
+                i for i in shopping_list.items if not i.is_bought and i.category == category
+            ]
         if members:
             groups[category] = members
     return groups
