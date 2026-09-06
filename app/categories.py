@@ -19,6 +19,7 @@ CATEGORY_ORDER: list[str] = [
     "Snacks",
     "Sweets",
     "Household",
+    "Disposables",
     "Personal Care",
     "Baby & Kids",
     "Pet Supplies",
@@ -222,7 +223,7 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
         # Hebrew
         "פרצלים", "צ'יפס", "פרינגלס", "פופקורן", "פופקורן חמאה", "פופקורן מלוח",
         "עוגות אורז", "קרקר", "קרקרים", "שוקולד", "שוקולד מריר", "שוקולד חלב", "שוקולד לבן",
-        "קינדר", "סניקרס", "טוויקס", "מארס", "מנטוס", "אוראו", "גומי", "גומי דובים",
+        "סניקרס", "טוויקס", "מארס", "מנטוס", "אוראו", "גומי", "גומי דובים",
         "סוכריה", "סוכריות", "עוגיה", "עוגיות", "עוגיות שוקולד צ'יפס", "עוגיות שיבולת שועל",
         "תערובת גרגירים", "בוטנים", "בוטנים מלוחים", "פיסטוק", "שקדים", "אגוזי מלך", "קשיו",
         "פירות יבשים", "גרנולה בר", "חטיף חלבון", "חטיף", "חטיפים", "עור פרי", "במבה",
@@ -230,9 +231,9 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
         "גרעינים", "חטיף אורז",
     ],
     "Sweets": [
-        "wafer", "wafers",
+        "wafer", "wafers", "kinder",
         # Hebrew — wafers and similar sweets
-        "ופל", "ופלים", "וופל", "וופלים", "אפיפית", "אפיפיות",
+        "ופל", "ופלים", "וופל", "וופלים", "אפיפית", "אפיפיות", "קינדר",
     ],
     "Household": [
         "laundry detergent", "detergent", "liquid detergent", "fabric softener", "softener",
@@ -251,6 +252,13 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
         "ספוג כלים", "ספוג", "ספוגים", "מגב רצפה", "מגב", "כפפות גומי", "יריעות מייבש",
         "ווייפ ניקוי", "מטאטא", "יד מגב", "סבון", "שקיות", "ניילון", "סוללה", "סוללות",
         "נורה", "נר", "נרות",
+    ],
+    "Disposables": [
+        "paper cup", "paper cups", "plastic cup", "plastic cups", "disposable plate",
+        "disposable plates", "disposable cutlery",
+        # Hebrew
+        "כוס נייר", "כוסות נייר", "כוס פלסטיק", "כוסות פלסטיק",
+        "צלחת חד פעמית", "צלחות חד פעמיות", "כלים חד פעמיים",
     ],
     "Personal Care": [
         "shampoo", "dry shampoo", "conditioner", "body wash", "hand soap", "shower gel",
