@@ -10,6 +10,8 @@ from app.pricing import normalize_name
         ("tomato", "Vegetables"),
         ("tomatoes", "Vegetables"),
         ("cucumber", "Vegetables"),
+        ("גמבה", "Vegetables"),
+        ("גמבות", "Vegetables"),
         ("apple", "Fruit"),
         ("banana", "Fruit"),
         ("milk", "Dairy & Eggs"),
