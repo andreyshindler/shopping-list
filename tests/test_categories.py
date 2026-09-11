@@ -33,6 +33,8 @@ from app.pricing import normalize_name
         ("מלפפונים בחומץ", "Pantry"),  # plural form
         ("מלפפון", "Vegetables"),  # ...but plain cucumber is unaffected
         ("frozen pizza", "Frozen"),
+        ("טבעות בצל", "Frozen"),
+        ("בצל", "Vegetables"),  # plain onion is unaffected
         ("orange juice", "Beverages"),
         ("chocolate", "Snacks"),
         ("וופלים", "Sweets"),
