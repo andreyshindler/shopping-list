@@ -36,6 +36,13 @@ from app.pricing import normalize_name
         ("טבעות בצל", "Frozen"),
         ("בצל", "Vegetables"),  # plain onion is unaffected
         ("orange juice", "Beverages"),
+        ("סלט כרוב אדום", "Chilled"),
+        ("סלטי כרוב אדום", "Chilled"),
+        ("כרוב אדום", "Vegetables"),  # raw cabbage (no סלט) is unaffected
+        ("חומוס", "Chilled"),
+        ("חומוס משומר", "Pantry"),  # canned chickpeas stays Pantry
+        ("סלט חומוס", "Chilled"),  # regression guard
+        ("סלט טחינה", "Chilled"),  # regression guard
         ("chocolate", "Snacks"),
         ("וופלים", "Sweets"),
         ("אפיפית", "Sweets"),
