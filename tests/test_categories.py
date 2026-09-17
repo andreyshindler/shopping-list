@@ -18,6 +18,7 @@ from app.pricing import normalize_name
         ("cheddar cheese", "Dairy & Eggs"),
         ("chicken breast", "Meat & Fish"),
         ("salmon", "Meat & Fish"),
+        ("פסטרמה", "Meat & Fish"),
         ("bread", "Bakery"),
         ("rice", "Pantry"),
         ("מלפפון במלח", "Pantry"),
