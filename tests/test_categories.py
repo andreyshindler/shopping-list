@@ -59,6 +59,10 @@ from app.pricing import normalize_name
         ("toilet paper", "Household"),
         ("paper towel", "Household"),  # unaffected by the new Disposables category
         ("toothpaste", "Personal Care"),
+        ("ערגליות תות", "Snacks"),
+        ("תות", "Fruit"),  # plain strawberry is unaffected
+        ("עגבניות muti מקולפות", "Pantry"),
+        ("עגבניות", "Vegetables"),  # plain tomatoes (no muti) unaffected
         ("flux capacitor", "Other"),
     ],
 )
