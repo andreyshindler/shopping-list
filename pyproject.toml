@@ -18,6 +18,7 @@ dependencies = [
     "lxml>=5.0",
     "pillow>=10.0",
     "pillow-heif>=0.16",
+    "anthropic>=0.40",
 ]
 
 [project.optional-dependencies]

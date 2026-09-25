@@ -204,6 +204,14 @@ button.variant.add:hover { background: #d7eed9; }
 }
 .receipt-form { margin-top: 8px; }
 .receipt-status { margin-top: 8px; font-size: 0.85rem; color: var(--accent); word-break: break-word; }
+.receipt-flash {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 10px 14px;
+  margin: -8px 0 14px;
+  font-size: 0.9rem;
+}
 
 label.field { display: block; margin-bottom: 12px; }
 label.field span { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 4px; }

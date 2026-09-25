@@ -28,6 +28,7 @@ from app.models import (
 )
 from app.parsing import parse_message
 from app.pricing import normalize_name, predicted_price
+from app.receipts import ReceiptData, ReceiptItem
 
 # Catalog variants offered in the web picker. Kept small on purpose: the picker also
 # always shows a free-text "custom product" field, so 3 + custom is enough choice.
@@ -491,3 +492,88 @@ def list_totals(shopping_list: ShoppingList) -> dict[str, float | int]:
         "bought_count": bought_count,
         "total_count": len(shopping_list.items),
     }
+
+
+# ---------------------------------------------------------------------------
+# Receipt price extraction: match a scanned receipt's lines to the list's items
+# and fill in the real prices it found.
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class ReceiptMatch:
+    item: Item
+    receipt_item: ReceiptItem
+
+
+@dataclass
+class ReceiptPlan:
+    matched: list[ReceiptMatch]  # list items the receipt confirms a price for
+    new_items: list[ReceiptItem]  # receipt lines with no matching list item
+
+
+def _name_tokens(normalized: str) -> set[str]:
+    return {tok for tok in normalized.split() if tok}
+
+
+def _names_match(a: set[str], b: set[str]) -> bool:
+    """Loose product match: identical, or one name's words contain the other's.
+
+    Handles "חלב" vs "חלב 3%" (subset) while staying whole-word so "שוקו" never
+    matches "שוקולד".
+    """
+    if not a or not b:
+        return False
+    return a == b or a <= b or b <= a
+
+
+def match_receipt(shopping_list: ShoppingList, receipt: ReceiptData) -> ReceiptPlan:
+    """Line up receipt items against a list's items (each list item matched once)."""
+    item_tokens = [(it, _name_tokens(it.normalized_name)) for it in shopping_list.items]
+    consumed: set[int] = set()
+    matched: list[ReceiptMatch] = []
+    new_items: list[ReceiptItem] = []
+
+    for r in receipt.items:
+        rt = _name_tokens(normalize_name(r.name))
+        hit = None
+        for idx, (it, toks) in enumerate(item_tokens):
+            if idx in consumed:
+                continue
+            if _names_match(rt, toks):
+                hit = idx
+                break
+        if hit is None:
+            new_items.append(r)
+        else:
+            consumed.add(hit)
+            matched.append(ReceiptMatch(item=item_tokens[hit][0], receipt_item=r))
+
+    return ReceiptPlan(matched=matched, new_items=new_items)
+
+
+def apply_receipt_prices(session: Session, shopping_list: ShoppingList, plan: ReceiptPlan) -> int:
+    """Fill in real prices for the items a receipt matched.
+
+    Mirrors ``complete_list``'s per-unit price learning, but — unlike the full
+    ``complete_list`` flow — never touches ``status``/``real_total``: a receipt is
+    typically attached to a list that's already completed (or mid-completion, where
+    the user may already be typing prices by hand), so those stay under the user's
+    existing manual controls. Returns the number of items priced.
+    """
+    currency = shopping_list.user.currency
+    for m in plan.matched:
+        if not m.item.is_bought:
+            m.item.bought_at = datetime.now(timezone.utc)
+        m.item.is_bought = True
+        m.item.real_price = round(m.receipt_item.price, 2)
+        qty = m.item.quantity or 1.0
+        session.add(
+            PriceHistory(
+                user_id=shopping_list.user_id,
+                normalized_name=m.item.normalized_name,
+                price=round(m.receipt_item.price / qty, 2),
+                currency=currency,
+            )
+        )
+    return len(plan.matched)
