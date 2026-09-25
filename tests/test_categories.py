@@ -63,6 +63,11 @@ from app.pricing import normalize_name
         ("תות", "Fruit"),  # plain strawberry is unaffected
         ("עגבניות muti מקולפות", "Pantry"),
         ("עגבניות", "Vegetables"),  # plain tomatoes (no muti) unaffected
+        ("שניצל ברוקולי", "Frozen"),
+        ("שניצלי ברוקולי", "Frozen"),  # plural form
+        ("שניצל", "Meat & Fish"),  # plain schnitzel is unaffected
+        ("ברוקולי", "Vegetables"),  # plain broccoli is unaffected
+        ("לבאנה", "Dairy & Eggs"),
         ("flux capacitor", "Other"),
     ],
 )
