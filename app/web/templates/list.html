@@ -29,6 +29,16 @@
   <span style="width: {{ (100 * totals.bought_count / totals.total_count) if totals.total_count else 0 }}%"></span>
 </div>
 
+{% if receipt_extract == "ok" %}
+<p class="receipt-flash">{{ t.receipt_extract_summary.format(matched=receipt_matched) }}{% if receipt_unmatched and receipt_unmatched|int > 0 %} · {{ t.receipt_extract_unmatched_note.format(unmatched=receipt_unmatched) }}{% endif %}</p>
+{% elif receipt_extract == "empty" %}
+<p class="receipt-flash">{{ t.receipt_extract_empty }}</p>
+{% elif receipt_extract == "unavailable" %}
+<p class="receipt-flash">{{ t.receipt_extract_unavailable }}</p>
+{% elif receipt_extract == "failed" %}
+<p class="receipt-flash">{{ t.receipt_extract_failed }}</p>
+{% endif %}
+
 {% if list.status == "completed" %}
 <div class="complete-card">
   <h2>{{ t.completed }}</h2>
@@ -37,6 +47,9 @@
   <a href="/list/{{ list.web_token }}/receipt" target="_blank" rel="noopener">
     <img class="receipt-img" src="/list/{{ list.web_token }}/receipt" alt="{{ t.receipt_photo }}" />
   </a>
+  <form method="post" action="/api/lists/{{ list.web_token }}/receipt/extract">
+    <button type="submit" class="secondary">{{ t.receipt_extract_button }}</button>
+  </form>
   {% endif %}
   <form method="post" action="/api/lists/{{ list.web_token }}/receipt"
         enctype="multipart/form-data" class="receipt-form">

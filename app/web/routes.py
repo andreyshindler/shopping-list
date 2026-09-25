@@ -16,10 +16,13 @@ from app.categories import CATEGORY_ORDER
 from app.config import get_settings as _get_settings
 from app.db import get_session
 from app.models import Item, ItemSuggestion, ShoppingList, User
+from app.receipts import ReceiptParseError, parse_receipt
 from app.services import (
+    apply_receipt_prices,
     complete_list,
     end_list,
     list_totals,
+    match_receipt,
     resolve_custom_variant,
     resolve_variant,
     toggle_item,
@@ -166,6 +169,9 @@ def view_list(token: str, request: Request, session: Session = Depends(get_sessi
             "groups": _grouped_items(sl),
             "bought": bought,
             "totals": list_totals(sl),
+            "receipt_extract": request.query_params.get("receipt_extract"),
+            "receipt_matched": request.query_params.get("matched"),
+            "receipt_unmatched": request.query_params.get("unmatched"),
             **i18n_context(sl.user.language, sl.web_token, "list"),
         },
     )
@@ -303,6 +309,44 @@ async def api_upload_receipt(
     if changed:
         session.commit()
     return RedirectResponse(url=f"/list/{token}", status_code=303)
+
+
+@router.post("/api/lists/{token}/receipt/extract")
+async def api_extract_receipt_prices(token: str, session: Session = Depends(get_session)):
+    """Read the already-saved receipt photo and fill real prices onto matched items.
+
+    Fully automatic (no review step): runs OCR, matches lines to items, applies
+    prices, and redirects back with a result summary in the query string. Never
+    fails the request — a missing API key or a failed scan just redirects with a
+    different result code so the page can explain what happened.
+    """
+    sl = _get_list(session, token)
+    if not sl.receipt_image:
+        return RedirectResponse(url=f"/list/{token}", status_code=303)
+
+    cfg = _get_settings()
+    try:
+        receipt = await asyncio.to_thread(
+            parse_receipt,
+            sl.receipt_image,
+            api_key=cfg.anthropic_api_key,
+            model=cfg.anthropic_model,
+            mime_type=sl.receipt_mime or "image/jpeg",
+        )
+    except ReceiptParseError:
+        result = "unavailable" if not cfg.anthropic_api_key else "failed"
+        return RedirectResponse(url=f"/list/{token}?receipt_extract={result}", status_code=303)
+
+    plan = match_receipt(sl, receipt)
+    matched = apply_receipt_prices(session, sl, plan)
+    session.commit()
+
+    unmatched = len(plan.new_items)
+    result = "ok" if (matched or unmatched) else "empty"
+    return RedirectResponse(
+        url=f"/list/{token}?receipt_extract={result}&matched={matched}&unmatched={unmatched}",
+        status_code=303,
+    )
 
 
 @router.post("/api/lists/{token}/finish")
