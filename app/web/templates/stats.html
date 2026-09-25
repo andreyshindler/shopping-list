@@ -43,7 +43,7 @@
   {% if summary.monthly %}
     {% for p in summary.monthly %}
     <a class="bar-row" href="/stats/{{ user.stats_token }}/trips?month={{ p.period }}">
-      <span class="period">{{ p.period }}</span>
+      <span class="period">{{ p.period }}<span class="trip-count">{{ t.trips_count.format(n=p.trips) }}</span></span>
       <span class="track"><span style="width: {{ (100 * p.total / max_month) }}%"></span></span>
       <span class="amount">{{ money(p.total) }}</span>
     </a>
