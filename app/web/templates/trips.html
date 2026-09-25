@@ -46,7 +46,7 @@
   {% endif %}
   {% for g in groups %}
   <div class="bars">
-    <h2>{{ month_names[g.month - 1] }} {{ g.year }} · {{ money(g.total) }}</h2>
+    <h2>{{ month_names[g.month - 1] }} {{ g.year }} · {{ t.trips_count.format(n=g.trips|length) }} · {{ money(g.total) }}</h2>
     <ul class="trips">
       {% for trip in g.trips %}{{ trip_row(trip) }}{% endfor %}
     </ul>
