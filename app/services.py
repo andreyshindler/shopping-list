@@ -446,10 +446,18 @@ def complete_list(
     shopping_list: ShoppingList,
     real_total: float,
     item_prices: dict[int, float] | None = None,
+    purchased_at: datetime | None = None,
 ) -> ShoppingList:
-    """Mark a list completed, store real prices, and feed the price history."""
+    """Mark a list completed, store real prices, and feed the price history.
+
+    ``purchased_at`` overrides the trip's recorded date (defaults to now) — lets the
+    user backdate a trip to when the receipt is actually from. It is applied to both
+    ``completed_at`` and every ``PriceHistory`` row written here, so a backdated trip
+    doesn't leave today's-dated prices behind to confuse "most recent price" lookups.
+    """
     item_prices = item_prices or {}
     currency = shopping_list.user.currency
+    when = purchased_at or datetime.now(timezone.utc)
 
     for item in shopping_list.items:
         price = item_prices.get(item.id)
@@ -465,13 +473,14 @@ def complete_list(
                     normalized_name=item.normalized_name,
                     price=round(price / qty, 2),
                     currency=currency,
+                    recorded_at=when,
                 )
             )
 
     shopping_list.real_total = round(real_total, 2)
     shopping_list.is_draft = False
     shopping_list.status = "completed"
-    shopping_list.completed_at = datetime.now(timezone.utc)
+    shopping_list.completed_at = when
     return shopping_list
 
 

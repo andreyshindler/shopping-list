@@ -47,6 +47,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "enter_paid": "Enter what you actually paid so we can improve "
         "predictions and your statistics.",
         "total_paid": "Total paid",
+        "purchase_date": "Purchase date",
         "save_finish": "Save & finish",
         "finish_shopping": "Finish shopping now",
         "finish_confirm": "Some items aren't marked as bought. End the list and save them for next time?",
@@ -110,6 +111,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "enter_paid": "הזינו כמה שילמתם בפועל כדי לשפר את התחזיות "
         "והסטטיסטיקה שלכם.",
         "total_paid": "סך הכול שולם",
+        "purchase_date": "תאריך הקנייה",
         "save_finish": "שמירה וסיום",
         "finish_shopping": "סיום הקנייה",
         "finish_confirm": "יש פריטים שלא סומנו כנקנו. לסיים את הרשימה ולשמור אותם לפעם הבאה?",
