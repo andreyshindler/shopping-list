@@ -1,8 +1,10 @@
+from datetime import datetime, timezone
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.models import Base
+from app.models import Base, PriceHistory
 from app.services import (
     complete_list,
     create_list_from_text,
@@ -55,6 +57,40 @@ def test_complete_feeds_predictions_for_next_list(session):
     sl2 = create_list_from_text(session, user, "milk\nbread")
     assert all(i.predicted_price == 3.0 for i in sl2.items)
     assert sl2.predicted_total == 6.0
+
+
+def _naive(dt):
+    """Strip tzinfo for comparison: SQLite drops it on round-trip through the DB,
+    while an in-memory (not-yet-reloaded) attribute keeps it — Postgres always keeps
+    it in production, this is purely a SQLite test-db quirk."""
+    return dt.replace(tzinfo=None) if dt.tzinfo else dt
+
+
+def test_complete_without_purchased_at_uses_now(session):
+    user = get_or_create_user(session, 223, "Test", "USD")
+    sl = create_list_from_text(session, user, "milk")
+    before = _naive(datetime.now(timezone.utc))
+    complete_list(session, sl, real_total=3.0, item_prices={sl.items[0].id: 3.0})
+    session.flush()
+    after = _naive(datetime.now(timezone.utc))
+    assert before <= _naive(sl.completed_at) <= after
+    history = session.query(PriceHistory).one()
+    assert before <= _naive(history.recorded_at) <= after
+
+
+def test_complete_with_purchased_at_backdates_trip_and_history(session):
+    user = get_or_create_user(session, 224, "Test", "USD")
+    sl = create_list_from_text(session, user, "milk")
+    backdate = datetime(2026, 9, 29, 12, tzinfo=timezone.utc)
+    complete_list(
+        session, sl, real_total=3.0, item_prices={sl.items[0].id: 3.0},
+        purchased_at=backdate,
+    )
+    session.flush()
+
+    assert _naive(sl.completed_at) == _naive(backdate)
+    history = session.query(PriceHistory).one()
+    assert _naive(history.recorded_at) == _naive(backdate)
 
 
 def test_list_totals_tracks_bought(session):

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import OrderedDict
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -51,6 +52,21 @@ def _get_list(session: Session, token: str) -> ShoppingList:
     if sl is None:
         raise HTTPException(status_code=404, detail="List not found")
     return sl
+
+
+def _parse_purchase_date(raw: str | None) -> datetime | None:
+    """Parse an optional ``<input type="date">`` value ("YYYY-MM-DD").
+
+    Returns a UTC datetime at noon, so the calendar date stays unambiguous regardless
+    of timezone, or ``None`` on missing/invalid input (callers fall back to "now").
+    """
+    if not raw:
+        return None
+    try:
+        d = date.fromisoformat(raw)
+    except ValueError:
+        return None
+    return datetime(d.year, d.month, d.day, 12, tzinfo=timezone.utc)
 
 
 # Receipt photos are stored in the DB (bytea); cap the size so a stray huge upload can't
@@ -172,6 +188,7 @@ def view_list(token: str, request: Request, session: Session = Depends(get_sessi
             "receipt_extract": request.query_params.get("receipt_extract"),
             "receipt_matched": request.query_params.get("matched"),
             "receipt_unmatched": request.query_params.get("unmatched"),
+            "today": date.today().isoformat(),
             **i18n_context(sl.user.language, sl.web_token, "list"),
         },
     )
@@ -264,7 +281,8 @@ async def api_complete_list(
                 item_prices[int(key[len("price_") :])] = float(value)
             except ValueError:
                 continue
-    complete_list(session, sl, real_total, item_prices)
+    purchased_at = _parse_purchase_date(form.get("purchased_on"))
+    complete_list(session, sl, real_total, item_prices, purchased_at=purchased_at)
     # An optional receipt photo may ride along in the same multipart form. A bad photo is
     # ignored (never blocks completing the list).
     data = await _read_receipt(_pick_upload(form))
@@ -282,10 +300,11 @@ async def api_upload_receipt(
     request: Request,
     session: Session = Depends(get_session),
 ):
-    """Post-completion edits: update the real total and/or attach/replace the receipt.
+    """Post-completion edits: update the real total, purchase date, and/or the receipt.
 
-    Only ``sl.real_total`` is touched — price history is left as written at completion, so
-    correcting the trip total here never double-writes per-item history.
+    Only ``sl.real_total``/``sl.completed_at`` are touched — price history is left as
+    written at completion, so correcting the trip here never double-writes per-item
+    history (``PriceHistory`` has no link back to the list to find/fix such rows anyway).
     """
     sl = _get_list(session, token)
     form = await request.form()
@@ -298,6 +317,11 @@ async def api_upload_receipt(
             changed = True
         except (TypeError, ValueError):
             pass
+
+    purchased_at = _parse_purchase_date(form.get("purchased_on"))
+    if purchased_at is not None:
+        sl.completed_at = purchased_at
+        changed = True
 
     data = await _read_receipt(_pick_upload(form))
     if data:
