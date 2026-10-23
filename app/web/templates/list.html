@@ -145,10 +145,12 @@
 
 {% set all_bought = list.status == "active" and totals.total_count and totals.bought_count == totals.total_count %}
 
-{# Submit sits above the price card, right under the bought items. It lives outside
-   the form, so it is wired to it with the `form` attribute. #}
+{# Pinned to the bottom of the screen so it stays reachable without scrolling. It
+   lives outside the form, so it is wired to it with the `form` attribute. #}
 {% if all_bought %}
-<button type="submit" form="complete-form" class="primary save-finish">{{ t.save_finish }}</button>
+<div class="save-finish-bar">
+  <button type="submit" form="complete-form" class="primary save-finish">{{ t.save_finish }}</button>
+</div>
 {% endif %}
 
 {% if list.status == "ended" %}
@@ -202,6 +204,8 @@
   </button>
 </div>
 {% endif %}
+
+{% if all_bought %}<div class="save-finish-spacer"></div>{% endif %}
 {% endblock %}
 
 {% block scripts %}

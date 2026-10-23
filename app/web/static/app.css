@@ -236,7 +236,22 @@ button.primary {
 }
 button.primary:hover { background: var(--accent-dark); }
 
-button.save-finish { margin: 4px 0 12px; }
+.save-finish-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  background: var(--bg);
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.08);
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+}
+.save-finish-bar .save-finish {
+  display: block;
+  max-width: 528px;
+  margin: 0 auto;
+}
+.save-finish-spacer { height: 90px; }
 
 .finish-form { margin-top: 8px; }
 button.secondary {
