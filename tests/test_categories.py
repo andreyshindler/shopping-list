@@ -44,6 +44,9 @@ from app.pricing import normalize_name
         ("חומוס משומר", "Pantry"),  # canned chickpeas stays Pantry
         ("סלט חומוס", "Chilled"),  # regression guard
         ("סלט טחינה", "Chilled"),  # regression guard
+        ("סלט חציל במיונז", "Chilled"),
+        ("סלטי חציל במיונז", "Chilled"),  # plural form
+        ("חציל", "Vegetables"),  # plain eggplant is unaffected
         ("chocolate", "Snacks"),
         ("וופלים", "Sweets"),
         ("אפיפית", "Sweets"),

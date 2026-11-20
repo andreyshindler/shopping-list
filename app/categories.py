@@ -198,6 +198,7 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
         "hummus salad", "tahini salad", "hummus",
         # Hebrew — refrigerated deli salads and dips
         "סלט חומוס", "סלט טחינה", "סלט כרוב אדום", "סלטי כרוב אדום", "חומוס",
+        "סלט חציל במיונז", "סלטי חציל במיונז",
     ],
     "Beverages": [
         "orange juice", "fresh orange juice", "juice", "grape juice", "apple juice",
