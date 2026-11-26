@@ -65,6 +65,8 @@ from app.pricing import normalize_name
         ("בורקסי פיצה קפואים", "Frozen"),  # plural form
         ("toilet paper", "Household"),
         ("paper towel", "Household"),  # unaffected by the new Disposables category
+        ("מלח למדיח", "Household"),
+        ("מלח", "Pantry"),  # plain table salt is unaffected
         ("toothpaste", "Personal Care"),
         ("ערגליות תות", "Snacks"),
         ("תות", "Fruit"),  # plain strawberry is unaffected
