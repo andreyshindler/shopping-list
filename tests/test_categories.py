@@ -59,6 +59,10 @@ from app.pricing import normalize_name
         ("כוס נייר", "Disposables"),
         ("בורקס", "Bakery"),
         ("בורקסים", "Bakery"),
+        ("בורקס קפוא", "Frozen"),
+        ("בורקסים קפואים", "Frozen"),
+        ("בורקס פיצה קפוא", "Frozen"),
+        ("בורקסי פיצה קפואים", "Frozen"),  # plural form
         ("toilet paper", "Household"),
         ("paper towel", "Household"),  # unaffected by the new Disposables category
         ("toothpaste", "Personal Care"),
